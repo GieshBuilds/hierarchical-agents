@@ -33,7 +33,7 @@ This project solves all of that.
 
 ## How It Works
 
-### The Org Chart
+### The Org Chart (example)
 
 Existing Hermes profiles are synced into a hierarchy via `ProfileBridge`. Each profile gets a role and a parent:
 
