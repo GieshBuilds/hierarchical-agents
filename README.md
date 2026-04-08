@@ -1,27 +1,41 @@
 # hierarchical-agents
 
-**Organize AI agents like a company. Give them roles, chain of command, messaging, memory, and task delegation — all backed by SQLite.**
+**Turn isolated [Hermes](https://github.com/GieshBuilds) agent profiles into a coordinated organization with hierarchy, messaging, delegation, and shared memory.**
 
-Built for the [Hermes](https://github.com/GieshBuilds) agent framework. Pure Python 3.10+ stdlib. Zero external dependencies.
+Hermes gives each agent its own profile — an isolated session with its own identity, tools, and state. But profiles can't talk to each other. This project adds the coordination layer: an org chart, an IPC message bus, delegation chains, scoped memory, and worker lifecycle management. Profiles stop being silos and start working as a team.
+
+Pure Python 3.10+ stdlib. Zero external dependencies in core. All persistence via SQLite.
 
 ---
 
-## What This Does
+## The Problem
 
-Most multi-agent systems are flat — agents talk to each other without structure. This project gives your agents an **organizational hierarchy**, the same way a company has a CEO, department heads, project managers, and workers.
+Hermes profiles are powerful in isolation. Each one has its own SOUL.md, session history, skills, model selection, and gateway. But out of the box:
 
-Each agent gets:
-- A **profile** with a defined role and position in the org chart
-- An **inbox** for receiving tasks and sending results via IPC
-- **Scoped memory** that persists across sessions, with automatic aging and cleanup
-- Access to a **shared knowledge base** that any agent can read or write
-- The ability to **delegate work** down the chain and **propagate results** back up
+- Profiles **can't message each other**
+- There's **no hierarchy** — no way to say "the CTO manages these PMs"
+- There's **no task delegation** — no way to assign work from one profile to another and get results back
+- There's **no shared memory** — each profile's knowledge is locked in its own silo
+- There's **no worker tracking** — when a PM spawns a subagent, nothing tracks its lifecycle
 
-The system enforces hierarchy rules (who can delegate to whom), tracks task chains end-to-end, and manages the full lifecycle of worker agents that get spawned for specific tasks.
+This project solves all of that.
+
+## What It Adds
+
+| Capability | What Hermes Has | What This Adds |
+|-----------|----------------|---------------|
+| **Identity** | Profile directories with SOUL.md, skills, state | Org chart registry with roles (CEO, Dept Head, PM, Specialist) and hierarchy rules |
+| **Communication** | None between profiles | IPC message bus with priority, TTL, correlation, broadcast, escalation |
+| **Delegation** | None | Delegation chains that track tasks from CEO -> Dept Head -> PM -> Worker and propagate results back up |
+| **Memory** | Per-profile session state | Tiered memory (hot/warm/cool/cold) with scoping, GC, shared knowledge base, and ancestor read access |
+| **Workers** | Can spawn subagents | Per-PM worker registry with lifecycle tracking (running/sleeping/completed/archived) and completion callbacks |
+| **Coordination** | None | ChainOrchestrator for end-to-end task flow with event-driven result propagation |
 
 ## How It Works
 
 ### The Org Chart
+
+Existing Hermes profiles are synced into a hierarchy via `ProfileBridge`. Each profile gets a role and a parent:
 
 ```
                           +---------+
@@ -47,7 +61,7 @@ The system enforces hierarchy rules (who can delegate to whom), tracks task chai
           +-------+
 ```
 
-When the CEO receives "build the authentication system", it delegates to the CTO, who delegates to the backend PM, who spawns a worker to write the code. The result flows back up the same path: worker -> PM -> CTO -> CEO.
+Each of these is a real Hermes profile with its own `~/.hermes/profiles/<name>/` directory. The hierarchy layer organizes them, gives them tools to communicate, and tracks work flowing between them.
 
 ### Task Flow
 
@@ -61,22 +75,50 @@ Each step is tracked, persisted, and auditable. Messages have priority levels (u
 
 ### Memory Model
 
-Agents don't start from scratch every session. Each profile has:
+Each profile gets scoped memory on top of Hermes' native session state:
 
 - **Personal memory** — decisions, learnings, context scoped to their role. Entries age through tiers (hot -> warm -> cool -> cold) with automatic garbage collection.
 - **Shared knowledge base** — organizational knowledge any agent can publish to or search. Standards, decisions, patterns that the whole org needs.
 - **Ancestor access** — agents can read memory from profiles above them in the chain of command (read-up only, never sideways).
 
-### Profile Lifecycle
+### What Gets Installed
 
-New profiles go through onboarding before activation:
+When you set up the hierarchy, it adds to your existing Hermes installation:
 
-1. **Created** — registered in the hierarchy with a role and parent
-2. **Onboarding** — parent submits a brief defining the profile's scope, success criteria, and handoff protocol
-3. **Active** — profile can send/receive messages, spawn workers, and participate in delegation chains
-4. **Suspended/Archived** — taken offline without losing data
+```
+~/.hermes/hierarchy/              # New — all coordination state
+  ├── registry.db                 # Org chart (profiles, roles, parents)
+  ├── ipc.db                      # Message bus
+  ├── chains.db                   # Delegation chain tracking
+  ├── memory/<profile>.db         # Per-profile scoped memory
+  ├── memory/knowledge.db         # Shared knowledge base
+  └── workers/<pm>/subagents.db   # Per-PM worker registry
 
-Each profile also gets generated documentation (SOUL.md, HANDOFF.md, WORKFLOWS.md, TOOLS.md, CONTEXT.md) that defines its identity and operating procedures.
+~/.hermes/profiles/<name>/        # Existing Hermes profiles — updated with:
+  ├── SOUL.md                     # Updated with hierarchy role + tools
+  ├── HANDOFF.md                  # How to receive/return work via IPC
+  ├── WORKFLOWS.md                # Standard operating procedures
+  └── TOOLS.md                    # Lists 12 new hierarchy tools
+```
+
+### Tools Given to Agents
+
+Every profile in the hierarchy gets these tools:
+
+| Tool | Purpose |
+|------|---------|
+| `send_to_profile` | Send a task or message to any profile in the org chart |
+| `check_inbox` | Read pending messages and task results |
+| `org_chart` | View the full organizational hierarchy |
+| `profile_status` | Check if a profile is active, see their workload |
+| `spawn_tracked_worker` | Spawn a worker subagent with lifecycle tracking |
+| `get_project_status` | Check status of delegated work and workers |
+| `save_memory` | Persist decisions and context to personal memory |
+| `search_knowledge` | Search the shared knowledge base |
+| `share_knowledge` | Publish knowledge for other profiles to find |
+| `read_ancestor_memory` | Read memory from profiles above you in the chain |
+| `get_chain_context` | Pull context from your full chain of command |
+| `create_profile` | Register a new profile in the hierarchy |
 
 ---
 
@@ -187,8 +229,8 @@ python -m core ipc-stats
 
 | Module | Key Class | What It Does |
 |--------|-----------|-------------|
-| `core/registry/` | `ProfileRegistry` | Agent profiles, hierarchy validation, org chart, onboarding |
-| `core/ipc/` | `MessageBus`, `MessageProtocol` | Inter-agent messaging with priority, TTL, correlation, broadcast, escalation |
+| `core/registry/` | `ProfileRegistry` | Organizes Hermes profiles into a hierarchy with roles and rules |
+| `core/ipc/` | `MessageBus`, `MessageProtocol` | Inter-profile messaging with priority, TTL, correlation, broadcast, escalation |
 | `core/workers/` | `SubagentRegistry` | Worker spawn/sleep/resume/complete lifecycle with completion callbacks |
 | `core/memory/` | `MemoryStore`, `KnowledgeBase` | Per-profile scoped memory with tiered aging + shared cross-profile knowledge |
 | `core/integration/` | `ChainOrchestrator` | End-to-end delegation chains with tracked hops and result propagation |
@@ -204,10 +246,10 @@ hierarchical-agents/
 │   ├── memory/              # Memory store, knowledge base, tiered storage, GC
 │   └── integration/         # Delegation chains, orchestrator, result propagation
 ├── integrations/
-│   ├── hermes/              # Hermes agent framework integration (gateway, bridges, delivery)
+│   ├── hermes/              # Hermes integration (gateway hooks, bridges, delivery)
 │   ├── claude_code/         # Claude Code context generation
 │   └── openclaw/            # OpenClaw integration
-├── tools/                   # Agent-callable tool definitions (12 tools)
+├── tools/                   # 12 agent-callable hierarchy tools
 ├── templates/               # Profile document templates + generator
 ├── ui/                      # Web dashboard (org chart, messages, workers, memory)
 ├── tests/                   # Test suite
@@ -216,11 +258,13 @@ hierarchical-agents/
 
 ## Design Philosophy
 
-**Stdlib only.** Zero external dependencies. `sqlite3` for persistence, `typing.Protocol` for interfaces, `dataclasses` for models. Portable and lightweight.
+**Extend, don't replace.** Hermes profiles are the foundation. This project adds coordination on top — it doesn't replace Hermes' session management, skill system, or gateway infrastructure.
+
+**Stdlib only.** Zero external dependencies in core. `sqlite3` for persistence, `typing.Protocol` for interfaces, `dataclasses` for models.
 
 **SQLite everywhere.** Every stateful component persists to SQLite. Thread-safe, zero-config, single-file databases. Pass `":memory:"` for testing or a file path for production.
 
-**Hierarchy is enforced, not suggested.** The registry validates every profile creation and delegation against hierarchy rules. Department heads report to the CEO, PMs report to department heads, and so on. Circular references are prevented.
+**Hierarchy is enforced, not suggested.** The registry validates every profile creation and delegation against hierarchy rules. Circular references are prevented. Role constraints are checked.
 
 **Tasks are tracked end-to-end.** Delegation chains record every hop from originator to worker. Results propagate back up the same path. Nothing gets lost in the middle.
 
