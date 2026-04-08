@@ -1,0 +1,1632 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hierarchy Management</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="/static/js/api.js"></script>
+    <script src="/static/js/ws.js"></script>
+</head>
+<body x-data="app()" x-init="init()">
+
+<!-- Toast notifications -->
+<div class="toast-container">
+    <template x-for="t in toasts" :key="t.id">
+        <div class="toast" :class="'toast-' + t.type" x-text="t.message"
+             x-show="t.visible" x-transition></div>
+    </template>
+</div>
+
+<div class="app-layout">
+    <!-- Sidebar -->
+    <nav class="sidebar">
+        <div class="sidebar-logo">
+            Hierarchy
+            <small>Management UI</small>
+        </div>
+        <a class="nav-item" :class="{ active: page === 'dashboard' }" @click="go('dashboard')">
+            <span class="nav-icon">&#9632;</span> <span class="nav-label">Dashboard</span>
+        </a>
+        <a class="nav-item" :class="{ active: page === 'profiles' }" @click="go('profiles')">
+            <span class="nav-icon">&#9775;</span> <span class="nav-label">Profiles</span>
+        </a>
+        <a class="nav-item" :class="{ active: page === 'org-chart' }" @click="go('org-chart')">
+            <span class="nav-icon">&#9733;</span> <span class="nav-label">Org Chart</span>
+        </a>
+        <a class="nav-item" :class="{ active: page === 'messages' }" @click="go('messages')">
+            <span class="nav-icon">&#9993;</span> <span class="nav-label">Messages</span>
+        </a>
+        <a class="nav-item" :class="{ active: page === 'chains' }" @click="go('chains')">
+            <span class="nav-icon">&#8688;</span> <span class="nav-label">Chains</span>
+        </a>
+        <a class="nav-item" :class="{ active: page === 'workers' }" @click="go('workers')">
+            <span class="nav-icon">&#9881;</span> <span class="nav-label">Workers</span>
+        </a>
+        <a class="nav-item" :class="{ active: page === 'memory' }" @click="go('memory')">
+            <span class="nav-icon">&#9729;</span> <span class="nav-label">Memory</span>
+        </a>
+        <div style="flex:1"></div>
+        <a class="nav-item" :class="{ active: page === 'setup' }" @click="go('setup')"
+           style="border-top: 1px solid var(--border); margin-top: 8px; padding-top: 12px;">
+            <span class="nav-icon">&#9881;</span> <span class="nav-label">Setup Wizard</span>
+        </a>
+        <div class="nav-item" style="cursor:default">
+            <div class="ws-dot" :class="{ connected: ws.state.connected }"></div>
+            <span class="nav-label" x-text="ws.state.connected ? 'Live' : 'Offline'" style="font-size:11px"></span>
+        </div>
+    </nav>
+
+    <!-- Main content -->
+    <main class="main-content">
+
+        <!-- ==================== DASHBOARD ==================== -->
+        <div x-show="page === 'dashboard'" x-cloak>
+            <div class="page-header">
+                <h1 class="page-title">Dashboard</h1>
+                <div class="ws-status">
+                    <div class="ws-dot" :class="{ connected: ws.state.connected }"></div>
+                    <span x-text="ws.state.connected ? 'Live' : 'Offline'"></span>
+                </div>
+            </div>
+
+            <!-- Summary cards -->
+            <div class="card-grid" x-show="dash">
+                <div class="card card-accent-blue">
+                    <div class="card-label">Profiles</div>
+                    <div class="card-value" x-text="dash?.profiles?.length || 0"></div>
+                </div>
+                <div class="card card-accent-green">
+                    <div class="card-label">Running Workers</div>
+                    <div class="card-value" x-text="dash?.workers?.running || 0"></div>
+                </div>
+                <div class="card card-accent-yellow">
+                    <div class="card-label">Pending Messages</div>
+                    <div class="card-value" x-text="dash?.messages?.pending || 0"></div>
+                </div>
+                <div class="card card-accent-purple">
+                    <div class="card-label">Active Chains</div>
+                    <div class="card-value" x-text="dash?.chains?.active || 0"></div>
+                </div>
+            </div>
+
+            <!-- Two columns: profiles + activity -->
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <!-- Profile status -->
+                <div>
+                    <h3 style="margin-bottom:12px; font-size:14px; color:var(--text-secondary)">Profile Status</h3>
+                    <div class="table-wrap">
+                        <table>
+                            <thead><tr><th>Profile</th><th>Role</th><th>Gateway</th><th>Pending</th></tr></thead>
+                            <tbody>
+                                <template x-for="p in (dash?.profiles || [])" :key="p.profile_name">
+                                    <tr @click="openProfile(p.profile_name)" style="cursor:pointer">
+                                        <td>
+                                            <span x-text="p.display_name"></span>
+                                            <br><small style="color:var(--text-muted)" x-text="p.profile_name"></small>
+                                        </td>
+                                        <td><span class="badge" :class="'role-' + p.role" x-text="p.role"></span></td>
+                                        <td>
+                                            <span class="badge" :class="p.gateway?.running ? 'badge-green' : 'badge-gray'"
+                                                  x-text="p.gateway?.running ? 'Running' : 'Stopped'"></span>
+                                        </td>
+                                        <td x-text="p.pending_messages || 0"></td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Live activity feed -->
+                <div>
+                    <h3 style="margin-bottom:12px; font-size:14px; color:var(--text-secondary)">Live Activity</h3>
+                    <div class="activity-feed">
+                        <template x-for="ev in ws.state.events.slice(0, 50)" :key="ev.timestamp + ev.type">
+                            <div class="activity-item">
+                                <span class="activity-time" x-text="formatTime(ev.timestamp)"></span>
+                                <span class="activity-icon" x-html="eventIcon(ev.type)"></span>
+                                <span class="activity-text" x-html="eventText(ev)"></span>
+                            </div>
+                        </template>
+                        <div x-show="ws.state.events.length === 0" class="empty-state">
+                            Waiting for events...
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== PROFILES ==================== -->
+        <div x-show="page === 'profiles'" x-cloak>
+            <div class="page-header">
+                <h1 class="page-title">Profiles</h1>
+                <button class="btn btn-primary" @click="showCreateProfile = true">+ New Profile</button>
+            </div>
+
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th>Name</th><th>Role</th><th>Parent</th><th>Department</th><th>Status</th><th>Actions</th></tr></thead>
+                    <tbody>
+                        <template x-for="p in profileList" :key="p.profile_name">
+                            <tr>
+                                <td>
+                                    <a @click="openProfile(p.profile_name)" style="cursor:pointer">
+                                        <strong x-text="p.display_name"></strong>
+                                    </a>
+                                    <br><small style="color:var(--text-muted)" x-text="p.profile_name"></small>
+                                </td>
+                                <td><span class="badge" :class="'role-' + p.role" x-text="p.role"></span></td>
+                                <td x-text="p.parent_profile || '-'"></td>
+                                <td x-text="p.department || '-'"></td>
+                                <td><span class="badge" :class="'status-' + p.status" x-text="p.status"></span></td>
+                                <td>
+                                    <div class="btn-group">
+                                        <button class="btn btn-sm" @click="openProfile(p.profile_name)">View</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Create Profile Modal -->
+        <div class="modal-overlay" x-show="showCreateProfile" x-cloak @click.self="showCreateProfile = false">
+            <div class="modal">
+                <div class="modal-title">Create New Profile</div>
+                <div class="form-group">
+                    <label class="form-label">Name (slug)</label>
+                    <input class="form-input" x-model="newProfile.name" placeholder="e.g. pm-frontend">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Display Name</label>
+                    <input class="form-input" x-model="newProfile.display_name" placeholder="e.g. Frontend PM">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Role</label>
+                    <select class="form-select" x-model="newProfile.role">
+                        <option value="ceo">CEO</option>
+                        <option value="department_head">Department Head</option>
+                        <option value="project_manager">Project Manager</option>
+                        <option value="specialist">Specialist</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Parent Profile</label>
+                    <select class="form-select" x-model="newProfile.parent">
+                        <option value="">None</option>
+                        <template x-for="p in profileList" :key="p.profile_name">
+                            <option :value="p.profile_name" x-text="p.display_name + ' (' + p.profile_name + ')'"></option>
+                        </template>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Department</label>
+                    <input class="form-input" x-model="newProfile.department" placeholder="e.g. engineering">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">What should this agent do?</label>
+                    <textarea class="form-textarea" style="min-height:100px" x-model="newProfile.purpose"
+                              placeholder="Describe the agent's purpose in plain English. E.g.: 'Manage the backend API development. Handle database migrations, endpoint implementation, and API testing. Coordinate with the frontend PM on API contracts.'"></textarea>
+                    <small style="color:var(--text-muted)">This will be used to AI-generate tailored SOUL.md, HANDOFF.md, WORKFLOWS.md, TOOLS.md, and CONTEXT.md</small>
+                </div>
+                <div class="form-group" style="display:flex; align-items:center; gap:8px;">
+                    <input type="checkbox" id="skip-onboarding" x-model="newProfile.skip_onboarding">
+                    <label for="skip-onboarding" style="font-size:13px; color:var(--text-secondary); cursor:pointer;">
+                        Start as active (skip onboarding)
+                    </label>
+                </div>
+                <div class="btn-group" style="justify-content:flex-end; margin-top:16px;">
+                    <button class="btn" @click="showCreateProfile = false">Cancel</button>
+                    <button class="btn btn-primary" @click="createProfile()" x-show="!creatingProfile">
+                        <span x-text="newProfile.purpose ? 'Create + AI Generate Docs' : 'Create (Template Docs)'"></span>
+                    </button>
+                    <button class="btn btn-primary" disabled x-show="creatingProfile">
+                        <span class="spinner" style="width:14px;height:14px;border-width:2px;margin-right:6px"></span>
+                        Generating docs...
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== PROFILE DETAIL ==================== -->
+        <div x-show="page === 'profile-detail'" x-cloak>
+            <div class="page-header">
+                <div>
+                    <a @click="go('profiles')" style="cursor:pointer; font-size:12px; color:var(--text-muted)">&#8592; Profiles</a>
+                    <h1 class="page-title" x-text="currentProfile?.display_name || selectedProfile"></h1>
+                </div>
+                <div class="btn-group">
+                    <template x-if="currentProfile?.status === 'suspended'">
+                        <button class="btn btn-sm badge-green" @click="activateProfileAction()">Activate</button>
+                    </template>
+                    <template x-if="currentProfile?.status === 'active'">
+                        <button class="btn btn-sm badge-yellow" @click="suspendProfileAction()">Suspend</button>
+                    </template>
+                    <button class="btn btn-sm" @click="toggleGateway()">
+                        <span x-text="profileGateway?.running ? 'Stop Gateway' : 'Start Gateway'"></span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Profile info bar -->
+            <div style="display:flex; gap:16px; margin-bottom:16px; flex-wrap:wrap;">
+                <div class="card" style="flex:1; min-width:150px">
+                    <div class="card-label">Role</div>
+                    <span class="badge" :class="'role-' + currentProfile?.role" x-text="currentProfile?.role"></span>
+                </div>
+                <div class="card" style="flex:1; min-width:150px">
+                    <div class="card-label">Status</div>
+                    <span class="badge" :class="'status-' + currentProfile?.status" x-text="currentProfile?.status"></span>
+                </div>
+                <div class="card" style="flex:1; min-width:150px">
+                    <div class="card-label">Parent</div>
+                    <a x-show="currentProfile?.parent_profile" @click="openProfile(currentProfile?.parent_profile)"
+                       style="cursor:pointer" x-text="currentProfile?.parent_profile"></a>
+                    <span x-show="!currentProfile?.parent_profile" style="color:var(--text-muted)">None</span>
+                </div>
+                <div class="card" style="flex:1; min-width:150px">
+                    <div class="card-label">Gateway</div>
+                    <span class="badge" :class="profileGateway?.running ? 'badge-green' : 'badge-gray'"
+                          x-text="profileGateway?.running ? 'Running (PID ' + profileGateway.pid + ')' : 'Stopped'"></span>
+                </div>
+            </div>
+
+            <!-- Tabs -->
+            <div class="tabs">
+                <div class="tab" :class="{ active: profileTab === 'docs' }" @click="profileTab = 'docs'; loadAgentDocs()">Agent Docs</div>
+                <div class="tab" :class="{ active: profileTab === 'files' }" @click="profileTab = 'files'; loadProfileFiles()">All Files</div>
+                <div class="tab" :class="{ active: profileTab === 'messages' }" @click="profileTab = 'messages'; loadProfileMessages()">Messages</div>
+                <div class="tab" :class="{ active: profileTab === 'workers' }" @click="profileTab = 'workers'; loadProfileWorkers()">Workers</div>
+                <div class="tab" :class="{ active: profileTab === 'memory' }" @click="profileTab = 'memory'; loadProfileMemory()">Memory</div>
+            </div>
+
+            <!-- Agent Docs tab -->
+            <div x-show="profileTab === 'docs'">
+                <!-- Doc sub-tabs -->
+                <div style="display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap; align-items:center;">
+                    <template x-for="doc in agentDocNames" :key="doc">
+                        <button class="btn btn-sm" :class="{ 'btn-primary': activeDoc === doc }"
+                                @click="activeDoc = doc; loadAgentDoc(doc)">
+                            <span x-text="doc"></span>
+                            <span x-show="!agentDocExists[doc]" style="color:var(--yellow); margin-left:4px" title="Not yet generated">*</span>
+                        </button>
+                    </template>
+                    <div style="flex:1"></div>
+                    <button class="btn btn-sm" @click="generateDocs(false)" title="Generate missing docs from templates">
+                        Generate Missing
+                    </button>
+                    <button class="btn btn-sm badge-yellow" @click="generateDocs(true)" title="Regenerate all docs from templates (overwrites!)">
+                        Regenerate All
+                    </button>
+                    <button class="btn btn-sm btn-primary" @click="showAiGenerate = true" title="Generate tailored docs using AI">
+                        AI Generate
+                    </button>
+                </div>
+
+                <!-- Doc editor -->
+                <div x-show="activeDoc">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <span style="font-size:13px; color:var(--text-muted)" x-text="activeDoc"></span>
+                        <button class="btn btn-primary btn-sm" @click="saveAgentDoc()">Save</button>
+                    </div>
+                    <textarea class="form-textarea" style="min-height:500px" x-model="activeDocContent"></textarea>
+                </div>
+                <div x-show="!activeDoc" class="empty-state">
+                    Select a document to edit
+                </div>
+
+                <!-- AI Generate Modal -->
+                <div class="modal-overlay" x-show="showAiGenerate" x-cloak @click.self="showAiGenerate = false">
+                    <div class="modal">
+                        <div class="modal-title">AI Generate Agent Docs</div>
+                        <p style="font-size:13px; color:var(--text-secondary); margin-bottom:16px;">
+                            Describe what this agent should do. AI will generate tailored SOUL.md, HANDOFF.md,
+                            WORKFLOWS.md, TOOLS.md, and CONTEXT.md specific to this purpose.
+                        </p>
+                        <div class="form-group">
+                            <label class="form-label">What should this agent do?</label>
+                            <textarea class="form-textarea" style="min-height:120px" x-model="aiPurpose"
+                                      placeholder="E.g.: 'Manage the backend API development. Handle database migrations, endpoint implementation, and API testing. Coordinate with the frontend PM on API contracts.'"></textarea>
+                        </div>
+                        <div style="font-size:12px; color:var(--text-muted); margin-bottom:16px;">
+                            This will overwrite existing docs. Takes ~1 minute per doc (5 docs total).
+                        </div>
+                        <div class="btn-group" style="justify-content:flex-end;">
+                            <button class="btn" @click="showAiGenerate = false" x-show="!aiGenerating">Cancel</button>
+                            <button class="btn btn-primary" @click="runAiGenerate()" x-show="!aiGenerating"
+                                    :disabled="!aiPurpose.trim()">Generate</button>
+                            <button class="btn btn-primary" disabled x-show="aiGenerating">
+                                <span class="spinner" style="width:14px;height:14px;border-width:2px;margin-right:6px"></span>
+                                Generating...
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Files tab -->
+            <div x-show="profileTab === 'files'">
+                <template x-if="editingFile">
+                    <div>
+                        <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                            <span style="font-size:13px; color:var(--text-muted)" x-text="editingFile"></span>
+                            <div class="btn-group">
+                                <button class="btn btn-sm" @click="editingFile = null">Cancel</button>
+                                <button class="btn btn-primary btn-sm" @click="saveFileContent()">Save</button>
+                            </div>
+                        </div>
+                        <textarea class="form-textarea" style="min-height:400px" x-model="editingFileContent"></textarea>
+                    </div>
+                </template>
+                <template x-if="!editingFile">
+                    <div class="table-wrap">
+                        <table>
+                            <thead><tr><th>File</th><th>Size</th><th>Actions</th></tr></thead>
+                            <tbody>
+                                <template x-for="f in profileFiles" :key="f.name">
+                                    <tr>
+                                        <td x-text="f.name"></td>
+                                        <td x-text="formatBytes(f.size)"></td>
+                                        <td><button class="btn btn-sm" @click="editFile(f.name)">Edit</button></td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </template>
+            </div>
+
+            <!-- Messages tab -->
+            <div x-show="profileTab === 'messages'">
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr><th>Time</th><th>Direction</th><th>Other</th><th>Type</th><th>Status</th><th>Preview</th></tr></thead>
+                        <tbody>
+                            <template x-for="m in profileMessages" :key="m.message_id">
+                                <tr>
+                                    <td style="white-space:nowrap" x-text="formatDateTime(m.created_at)"></td>
+                                    <td>
+                                        <span class="badge" :class="m.to_profile === selectedProfile ? 'badge-green' : 'badge-blue'"
+                                              x-text="m.to_profile === selectedProfile ? 'IN' : 'OUT'"></span>
+                                    </td>
+                                    <td x-text="m.to_profile === selectedProfile ? m.from_profile : m.to_profile"></td>
+                                    <td><span class="badge badge-gray" x-text="m.message_type"></span></td>
+                                    <td><span class="badge" :class="'status-' + m.status" x-text="m.status"></span></td>
+                                    <td style="max-width:300px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap"
+                                        x-text="JSON.stringify(m.payload).substring(0, 100)"></td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Workers tab -->
+            <div x-show="profileTab === 'workers'">
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr><th>ID</th><th>Task</th><th>Status</th><th>Created</th><th>Result</th></tr></thead>
+                        <tbody>
+                            <template x-for="w in profileWorkers" :key="w.subagent_id">
+                                <tr>
+                                    <td style="font-family:monospace; font-size:11px" x-text="w.subagent_id.substring(0, 12)"></td>
+                                    <td style="max-width:300px" x-text="w.task_goal?.substring(0, 100)"></td>
+                                    <td><span class="badge" :class="'status-' + w.status" x-text="w.status"></span></td>
+                                    <td style="white-space:nowrap" x-text="formatDateTime(w.created_at)"></td>
+                                    <td style="max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap"
+                                        x-text="w.result_summary?.substring(0, 80) || '-'"></td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Memory tab -->
+            <div x-show="profileTab === 'memory'">
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr><th>Tier</th><th>Type</th><th>Content</th><th>Created</th></tr></thead>
+                        <tbody>
+                            <template x-for="e in profileMemoryEntries" :key="e.entry_id">
+                                <tr>
+                                    <td><span class="badge badge-purple" x-text="e.tier"></span></td>
+                                    <td><span class="badge badge-gray" x-text="e.entry_type"></span></td>
+                                    <td style="max-width:400px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap"
+                                        x-text="e.content?.substring(0, 150)"></td>
+                                    <td style="white-space:nowrap" x-text="formatDateTime(e.created_at)"></td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== ORG CHART ==================== -->
+        <div x-show="page === 'org-chart'" x-cloak>
+            <div class="page-header">
+                <h1 class="page-title">Organization Chart</h1>
+            </div>
+            <div class="org-chart-container" id="org-chart-container"></div>
+        </div>
+
+        <!-- ==================== MESSAGES ==================== -->
+        <div x-show="page === 'messages'" x-cloak>
+            <div class="page-header">
+                <h1 class="page-title">IPC Messages</h1>
+            </div>
+
+            <div class="filter-bar">
+                <select class="form-select" x-model="msgFilter.profile" @change="loadMessages()">
+                    <option value="">All profiles</option>
+                    <template x-for="p in profileList" :key="p.profile_name">
+                        <option :value="p.profile_name" x-text="p.profile_name"></option>
+                    </template>
+                </select>
+                <select class="form-select" x-model="msgFilter.type" @change="loadMessages()">
+                    <option value="">All types</option>
+                    <option value="task_request">task_request</option>
+                    <option value="task_response">task_response</option>
+                    <option value="status_query">status_query</option>
+                    <option value="broadcast">broadcast</option>
+                    <option value="escalation">escalation</option>
+                </select>
+                <select class="form-select" x-model="msgFilter.status" @change="loadMessages()">
+                    <option value="">All statuses</option>
+                    <option value="pending">pending</option>
+                    <option value="delivered">delivered</option>
+                    <option value="read">read</option>
+                    <option value="expired">expired</option>
+                </select>
+                <button class="btn btn-sm" @click="loadMessages()">Refresh</button>
+            </div>
+
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th>Time</th><th>From</th><th>To</th><th>Type</th><th>Priority</th><th>Status</th><th>Payload</th></tr></thead>
+                    <tbody>
+                        <template x-for="m in messageList" :key="m.message_id">
+                            <tr @click="selectedMessage = (selectedMessage === m ? null : m)" style="cursor:pointer">
+                                <td style="white-space:nowrap" x-text="formatDateTime(m.created_at)"></td>
+                                <td><a @click.stop="openProfile(m.from_profile)" style="cursor:pointer" x-text="m.from_profile"></a></td>
+                                <td><a @click.stop="openProfile(m.to_profile)" style="cursor:pointer" x-text="m.to_profile"></a></td>
+                                <td><span class="badge badge-gray" x-text="m.message_type"></span></td>
+                                <td><span class="badge" :class="m.priority === 'urgent' ? 'badge-red' : 'badge-gray'" x-text="m.priority"></span></td>
+                                <td><span class="badge" :class="'status-' + m.status" x-text="m.status"></span></td>
+                                <td style="max-width:300px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap"
+                                    x-text="typeof m.payload === 'object' ? JSON.stringify(m.payload).substring(0, 80) : String(m.payload).substring(0, 80)"></td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Message detail -->
+            <template x-if="selectedMessage">
+                <div class="card" style="margin-top:16px">
+                    <h3 style="font-size:14px; margin-bottom:12px;">Message Detail</h3>
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; margin-bottom:12px; font-size:13px;">
+                        <div><strong>ID:</strong> <span style="font-family:monospace" x-text="selectedMessage.message_id"></span></div>
+                        <div><strong>Correlation:</strong> <span style="font-family:monospace" x-text="selectedMessage.correlation_id || 'none'"></span></div>
+                        <div><strong>From:</strong> <span x-text="selectedMessage.from_profile"></span></div>
+                        <div><strong>To:</strong> <span x-text="selectedMessage.to_profile"></span></div>
+                        <div><strong>Type:</strong> <span x-text="selectedMessage.message_type"></span></div>
+                        <div><strong>Created:</strong> <span x-text="selectedMessage.created_at"></span></div>
+                    </div>
+                    <div class="form-label">Payload</div>
+                    <div class="json-view" x-text="JSON.stringify(selectedMessage.payload, null, 2)"></div>
+                </div>
+            </template>
+        </div>
+
+        <!-- ==================== CHAINS ==================== -->
+        <div x-show="page === 'chains'" x-cloak>
+            <div class="page-header">
+                <h1 class="page-title">Delegation Chains</h1>
+            </div>
+
+            <div class="filter-bar">
+                <select class="form-select" x-model="chainFilter.status" @change="loadChains()">
+                    <option value="">All statuses</option>
+                    <option value="pending">pending</option>
+                    <option value="active">active</option>
+                    <option value="completed">completed</option>
+                    <option value="failed">failed</option>
+                </select>
+                <button class="btn btn-sm" @click="loadChains()">Refresh</button>
+            </div>
+
+            <template x-for="c in chainList" :key="c.chain_id">
+                <div class="card" style="margin-bottom:12px">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <div>
+                            <strong x-text="c.task_description?.substring(0, 80)"></strong>
+                            <br><small style="color:var(--text-muted)">
+                                <span x-text="c.chain_id"></span> &middot; from <span x-text="c.originator"></span>
+                            </small>
+                        </div>
+                        <span class="badge" :class="'status-' + c.status" x-text="c.status"></span>
+                    </div>
+
+                    <!-- Hop flow -->
+                    <div class="chain-flow" x-show="c.hops?.length">
+                        <template x-for="(h, i) in c.hops" :key="i">
+                            <div class="chain-hop">
+                                <div class="chain-profile" x-text="h.from_profile"></div>
+                                <span class="chain-arrow">&#8594;</span>
+                                <div class="chain-profile" x-text="h.to_profile"></div>
+                                <span class="badge btn-sm" :class="'status-' + h.status" x-text="h.status"
+                                      style="margin-left:4px"></span>
+                                <template x-if="i < c.hops.length - 1">
+                                    <span class="chain-arrow" style="margin: 0 8px">&#8594;</span>
+                                </template>
+                            </div>
+                        </template>
+                    </div>
+
+                    <!-- Workers -->
+                    <div x-show="c.workers?.length" style="margin-top:8px; font-size:12px; color:var(--text-secondary)">
+                        Workers: <span x-text="c.workers?.length || 0"></span>
+                        &middot; Results: <span x-text="Object.keys(c.worker_results || {}).length"></span>
+                    </div>
+                </div>
+            </template>
+        </div>
+
+        <!-- ==================== WORKERS ==================== -->
+        <div x-show="page === 'workers'" x-cloak>
+            <div class="page-header">
+                <h1 class="page-title">Workers</h1>
+            </div>
+
+            <div class="filter-bar">
+                <select class="form-select" x-model="workerFilter.status" @change="loadWorkers()">
+                    <option value="">All statuses</option>
+                    <option value="running">running</option>
+                    <option value="completed">completed</option>
+                    <option value="failed">failed</option>
+                </select>
+                <button class="btn btn-sm" @click="loadWorkers()">Refresh</button>
+            </div>
+
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th>ID</th><th>PM</th><th>Task</th><th>Status</th><th>Created</th><th>Result</th></tr></thead>
+                    <tbody>
+                        <template x-for="w in workerList" :key="w.subagent_id">
+                            <tr>
+                                <td style="font-family:monospace; font-size:11px" x-text="w.subagent_id?.substring(0, 16)"></td>
+                                <td><a @click="openProfile(w.project_manager)" style="cursor:pointer" x-text="w.project_manager"></a></td>
+                                <td style="max-width:300px" x-text="w.task_goal?.substring(0, 100)"></td>
+                                <td><span class="badge" :class="'status-' + w.status" x-text="w.status"></span></td>
+                                <td style="white-space:nowrap" x-text="formatDateTime(w.created_at)"></td>
+                                <td style="max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap"
+                                    x-text="w.result_summary?.substring(0, 80) || '-'"></td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ==================== SETUP WIZARD ==================== -->
+        <div x-show="page === 'setup'" x-cloak>
+            <div class="page-header">
+                <h1 class="page-title">Setup Wizard</h1>
+                <button class="btn btn-sm" @click="loadSetup()">Refresh</button>
+            </div>
+
+            <!-- Step indicator -->
+            <div class="wizard-steps">
+                <template x-for="(s, i) in setupSteps" :key="i">
+                    <div class="wizard-step" :class="{ active: setupStep === i, done: setupStep > i }" @click="setupStep = i">
+                        <div class="wizard-step-num" x-text="setupStep > i ? '\u2713' : (i + 1)"></div>
+                        <span class="wizard-step-label" x-text="s"></span>
+                    </div>
+                </template>
+            </div>
+
+            <!-- STEP 0: Health Check -->
+            <div x-show="setupStep === 0">
+                <div class="card" style="margin-bottom:16px">
+                    <h3 style="font-size:15px; margin-bottom:12px">System Health</h3>
+                    <div x-show="!setupHealth" class="empty-state">
+                        <button class="btn btn-primary" @click="runHealthCheck()">Run Health Check</button>
+                    </div>
+                    <div x-show="setupHealth">
+                        <div style="margin-bottom:12px">
+                            <span class="badge" :class="{
+                                'badge-green': setupHealth?.overall === 'ok',
+                                'badge-yellow': setupHealth?.overall === 'warning',
+                                'badge-red': setupHealth?.overall === 'error'
+                            }" x-text="setupHealth?.overall?.toUpperCase()" style="font-size:13px; padding:4px 12px"></span>
+                        </div>
+                        <template x-for="c in (setupHealth?.checks || [])" :key="c.name">
+                            <div style="display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--border)">
+                                <span style="width:16px; text-align:center"
+                                      :style="{ color: c.status === 'ok' ? 'var(--green)' : c.status === 'warning' ? 'var(--yellow)' : 'var(--red)' }"
+                                      x-text="c.status === 'ok' ? '\u2713' : c.status === 'warning' ? '!' : '\u2717'"></span>
+                                <span style="min-width:180px; font-weight:500" x-text="c.name"></span>
+                                <span style="color:var(--text-secondary); font-size:13px" x-text="c.detail"></span>
+                            </div>
+                        </template>
+                        <div style="margin-top:16px">
+                            <button class="btn btn-sm" @click="runHealthCheck()">Re-check</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="btn-group" style="justify-content:flex-end">
+                    <button class="btn btn-primary" @click="setupStep = 1; loadSetupScan()">Next: Scan Profiles &rarr;</button>
+                </div>
+            </div>
+
+            <!-- STEP 1: Scan & Register -->
+            <div x-show="setupStep === 1">
+                <div class="card" style="margin-bottom:16px">
+                    <h3 style="font-size:15px; margin-bottom:4px">Profile Scan</h3>
+                    <p style="font-size:13px; color:var(--text-secondary); margin-bottom:16px">
+                        Comparing hermes profiles on disk (<code>~/.hermes/profiles/</code>) with the hierarchy registry.
+                    </p>
+
+                    <div x-show="setupScan" style="display:flex; gap:12px; margin-bottom:16px; flex-wrap:wrap">
+                        <div class="card card-accent-blue" style="flex:1; min-width:120px">
+                            <div class="card-label">On Disk</div>
+                            <div class="card-value" x-text="setupScan?.summary?.total_disk || 0"></div>
+                        </div>
+                        <div class="card card-accent-green" style="flex:1; min-width:120px">
+                            <div class="card-label">Registered</div>
+                            <div class="card-value" x-text="setupScan?.summary?.total_registered || 0"></div>
+                        </div>
+                        <div class="card" style="flex:1; min-width:120px" :class="(setupScan?.summary?.unregistered || 0) > 0 ? 'card-accent-yellow' : 'card-accent-green'">
+                            <div class="card-label">Unregistered</div>
+                            <div class="card-value" x-text="setupScan?.summary?.unregistered || 0"></div>
+                        </div>
+                    </div>
+
+                    <div class="table-wrap" x-show="setupScan">
+                        <table>
+                            <thead><tr>
+                                <th style="width:30px"><input type="checkbox" @change="toggleAllRegister($event)"></th>
+                                <th>Profile</th><th>On Disk</th><th>Registered</th><th>Docs</th><th>Gateway</th>
+                            </tr></thead>
+                            <tbody>
+                                <template x-for="p in (setupScan?.profiles || [])" :key="p.name">
+                                    <tr>
+                                        <td>
+                                            <input type="checkbox" x-show="!p.registered && p.on_disk"
+                                                   :checked="setupRegisterSet.has(p.name)"
+                                                   @change="toggleRegister(p.name)">
+                                        </td>
+                                        <td>
+                                            <strong x-text="p.display_name || p.name"></strong>
+                                            <br><small style="color:var(--text-muted)" x-text="p.name"></small>
+                                        </td>
+                                        <td><span class="badge" :class="p.on_disk ? 'badge-green' : 'badge-gray'" x-text="p.on_disk ? 'Yes' : 'No'"></span></td>
+                                        <td><span class="badge" :class="p.registered ? 'badge-green' : 'badge-yellow'" x-text="p.registered ? p.role || 'Yes' : 'No'"></span></td>
+                                        <td>
+                                            <span x-text="p.docs_count + '/6'"></span>
+                                            <span x-show="p.has_soul" style="color:var(--green)" title="SOUL.md exists"> &#10003;</span>
+                                        </td>
+                                        <td><span class="badge" :class="p.gateway_running ? 'badge-green' : 'badge-gray'" x-text="p.gateway_running ? 'Running' : 'Stopped'"></span></td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Register unregistered profiles -->
+                    <div x-show="setupRegisterSet.size > 0" style="margin-top:12px">
+                        <h4 style="font-size:14px; margin-bottom:8px">Register Selected Profiles</h4>
+                        <div style="display:flex; gap:12px; margin-bottom:8px; flex-wrap:wrap">
+                            <div class="form-group" style="flex:1; min-width:150px; margin-bottom:8px">
+                                <label class="form-label">Role</label>
+                                <select class="form-select" x-model="setupBatchRole">
+                                    <option value="project_manager">Project Manager</option>
+                                    <option value="department_head">Department Head</option>
+                                    <option value="specialist">Specialist</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="flex:1; min-width:150px; margin-bottom:8px">
+                                <label class="form-label">Parent Profile</label>
+                                <select class="form-select" x-model="setupBatchParent">
+                                    <option value="">None</option>
+                                    <template x-for="p in (setupScan?.profiles || []).filter(p => p.registered)" :key="p.name">
+                                        <option :value="p.name" x-text="p.name"></option>
+                                    </template>
+                                </select>
+                            </div>
+                            <div class="form-group" style="flex:1; min-width:150px; margin-bottom:8px">
+                                <label class="form-label">Department</label>
+                                <input class="form-input" x-model="setupBatchDept" value="engineering">
+                            </div>
+                        </div>
+                        <button class="btn btn-primary" @click="registerBatch()">
+                            Register <span x-text="setupRegisterSet.size"></span> Profile(s)
+                        </button>
+                    </div>
+                </div>
+                <div class="btn-group" style="justify-content:space-between">
+                    <button class="btn" @click="setupStep = 0">&larr; Back</button>
+                    <button class="btn btn-primary" @click="setupStep = 2">Next: Generate Docs &rarr;</button>
+                </div>
+            </div>
+
+            <!-- STEP 2: Generate Docs -->
+            <div x-show="setupStep === 2">
+                <div class="card" style="margin-bottom:16px">
+                    <h3 style="font-size:15px; margin-bottom:4px">Agent Documentation</h3>
+                    <p style="font-size:13px; color:var(--text-secondary); margin-bottom:16px">
+                        Generate SOUL.md and other docs for profiles that need them. You can use template-based
+                        generation (instant) or AI-powered generation (tailored but slower).
+                    </p>
+
+                    <div class="table-wrap">
+                        <table>
+                            <thead><tr><th>Profile</th><th>Role</th><th>Docs</th><th>Actions</th></tr></thead>
+                            <tbody>
+                                <template x-for="p in (setupScan?.profiles || []).filter(p => p.registered)" :key="p.name">
+                                    <tr>
+                                        <td><strong x-text="p.display_name || p.name"></strong></td>
+                                        <td><span class="badge" :class="'role-' + p.role" x-text="p.role"></span></td>
+                                        <td>
+                                            <span x-text="p.docs_count + '/6'"></span>
+                                            <span x-show="p.docs_count >= 6" style="color:var(--green)"> &#10003; Complete</span>
+                                        </td>
+                                        <td>
+                                            <div class="btn-group">
+                                                <button class="btn btn-sm" x-show="p.docs_count < 6"
+                                                        @click="generateSetupDocs(p.name, false)"
+                                                        :disabled="setupGenerating[p.name]">
+                                                    <span x-show="setupGenerating[p.name]" class="spinner" style="width:12px;height:12px;border-width:2px;margin-right:4px"></span>
+                                                    Generate Missing
+                                                </button>
+                                                <button class="btn btn-sm" @click="openProfile(p.name)">Edit</button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div style="margin-top:12px">
+                        <button class="btn" @click="generateAllMissingDocs()" :disabled="setupGeneratingAll">
+                            <span x-show="setupGeneratingAll" class="spinner" style="width:12px;height:12px;border-width:2px;margin-right:4px"></span>
+                            Generate All Missing Docs
+                        </button>
+                    </div>
+                </div>
+                <div class="btn-group" style="justify-content:space-between">
+                    <button class="btn" @click="setupStep = 1">&larr; Back</button>
+                    <button class="btn btn-primary" @click="setupStep = 3">Next: Gateways &rarr;</button>
+                </div>
+            </div>
+
+            <!-- STEP 3: Start Gateways -->
+            <div x-show="setupStep === 3">
+                <div class="card" style="margin-bottom:16px">
+                    <h3 style="font-size:15px; margin-bottom:4px">Gateway Management</h3>
+                    <p style="font-size:13px; color:var(--text-secondary); margin-bottom:16px">
+                        Each profile needs a running gateway to receive and process tasks.
+                        Start all gateways at once or manage them individually.
+                    </p>
+
+                    <div style="display:flex; gap:8px; margin-bottom:16px">
+                        <button class="btn btn-primary" @click="startAllGateways()" :disabled="setupGwLoading">
+                            <span x-show="setupGwLoading" class="spinner" style="width:12px;height:12px;border-width:2px;margin-right:4px"></span>
+                            Start All Gateways
+                        </button>
+                        <button class="btn btn-danger" @click="stopAllGateways()" :disabled="setupGwLoading">Stop All</button>
+                        <button class="btn btn-sm" @click="loadSetupScan()">Refresh</button>
+                    </div>
+
+                    <div class="table-wrap">
+                        <table>
+                            <thead><tr><th>Profile</th><th>Role</th><th>Status</th><th>PID</th><th>Pending</th><th>Actions</th></tr></thead>
+                            <tbody>
+                                <template x-for="p in (setupScan?.profiles || []).filter(p => p.registered && p.status === 'active')" :key="p.name">
+                                    <tr>
+                                        <td><strong x-text="p.display_name || p.name"></strong></td>
+                                        <td><span class="badge" :class="'role-' + p.role" x-text="p.role"></span></td>
+                                        <td>
+                                            <span class="badge" :class="p.gateway_running ? 'badge-green' : 'badge-red'"
+                                                  x-text="p.gateway_running ? 'Running' : 'Stopped'"></span>
+                                        </td>
+                                        <td style="font-family:monospace; font-size:12px" x-text="p.gateway_pid || '-'"></td>
+                                        <td x-text="p.pending_messages || 0"></td>
+                                        <td>
+                                            <button class="btn btn-sm" x-show="!p.gateway_running"
+                                                    @click="startOneGateway(p.name)">Start</button>
+                                            <button class="btn btn-sm" x-show="p.gateway_running"
+                                                    @click="stopOneGateway(p.name)">Stop</button>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="btn-group" style="justify-content:space-between">
+                    <button class="btn" @click="setupStep = 2">&larr; Back</button>
+                    <button class="btn btn-primary" @click="setupStep = 4">Next: Verify &rarr;</button>
+                </div>
+            </div>
+
+            <!-- STEP 4: Verify -->
+            <div x-show="setupStep === 4">
+                <div class="card" style="margin-bottom:16px">
+                    <h3 style="font-size:15px; margin-bottom:4px">Verify End-to-End Flow</h3>
+                    <p style="font-size:13px; color:var(--text-secondary); margin-bottom:16px">
+                        Send a test task through the hierarchy to verify everything is wired correctly.
+                    </p>
+
+                    <div style="display:flex; gap:12px; margin-bottom:16px; flex-wrap:wrap">
+                        <div class="form-group" style="flex:1; min-width:150px; margin-bottom:0">
+                            <label class="form-label">Send To</label>
+                            <select class="form-select" x-model="setupTestTo">
+                                <template x-for="p in (setupScan?.profiles || []).filter(p => p.registered && p.status === 'active' && p.name !== 'hermes')" :key="p.name">
+                                    <option :value="p.name" x-text="p.name"></option>
+                                </template>
+                            </select>
+                        </div>
+                        <div class="form-group" style="flex:3; min-width:250px; margin-bottom:0">
+                            <label class="form-label">Message</label>
+                            <input class="form-input" x-model="setupTestMsg" placeholder="Reply with exactly: TEST OK">
+                        </div>
+                    </div>
+
+                    <button class="btn btn-primary" @click="sendTestTask()" :disabled="setupTestSending">
+                        <span x-show="setupTestSending" class="spinner" style="width:12px;height:12px;border-width:2px;margin-right:4px"></span>
+                        Send Test Task
+                    </button>
+
+                    <div x-show="setupTestResult" style="margin-top:16px">
+                        <div class="card" :class="setupTestResult?.error ? 'card-accent-red' : 'card-accent-green'" style="background:var(--bg-primary)">
+                            <div x-show="!setupTestResult?.error">
+                                <span style="color:var(--green); font-weight:600">Task Sent</span>
+                                <div style="font-size:13px; color:var(--text-secondary); margin-top:8px">
+                                    <div>Message ID: <code x-text="setupTestResult?.message_id"></code></div>
+                                    <div>To: <strong x-text="setupTestResult?.to"></strong></div>
+                                    <div style="margin-top:8px; color:var(--text-muted)" x-text="setupTestResult?.note"></div>
+                                </div>
+                            </div>
+                            <div x-show="setupTestResult?.error" style="color:var(--red)" x-text="setupTestResult?.error"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Final health re-check -->
+                <div class="card" style="margin-bottom:16px">
+                    <h3 style="font-size:15px; margin-bottom:12px">Final Health Check</h3>
+                    <button class="btn" @click="runHealthCheck()">Run Health Check</button>
+                    <div x-show="setupHealth" style="margin-top:12px">
+                        <template x-for="c in (setupHealth?.checks || [])" :key="c.name">
+                            <div style="display:flex; align-items:center; gap:10px; padding:6px 0; font-size:13px">
+                                <span style="width:16px; text-align:center"
+                                      :style="{ color: c.status === 'ok' ? 'var(--green)' : c.status === 'warning' ? 'var(--yellow)' : 'var(--red)' }"
+                                      x-text="c.status === 'ok' ? '\u2713' : c.status === 'warning' ? '!' : '\u2717'"></span>
+                                <span style="min-width:160px; font-weight:500; font-size:12px" x-text="c.name"></span>
+                                <span style="color:var(--text-secondary); font-size:12px" x-text="c.detail"></span>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <div class="btn-group" style="justify-content:space-between">
+                    <button class="btn" @click="setupStep = 3">&larr; Back</button>
+                    <button class="btn btn-primary" @click="go('dashboard')">Done &mdash; Go to Dashboard</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== MEMORY ==================== -->
+        <div x-show="page === 'memory'" x-cloak>
+            <div class="page-header">
+                <h1 class="page-title">Memory</h1>
+            </div>
+
+            <div class="filter-bar">
+                <select class="form-select" x-model="memoryProfile" @change="loadMemory()">
+                    <option value="">Select profile...</option>
+                    <template x-for="p in memoryProfiles" :key="p">
+                        <option :value="p" x-text="p"></option>
+                    </template>
+                </select>
+            </div>
+
+            <div class="table-wrap" x-show="memoryEntries.length">
+                <table>
+                    <thead><tr><th>Tier</th><th>Type</th><th>Content</th><th>Size</th><th>Created</th></tr></thead>
+                    <tbody>
+                        <template x-for="e in memoryEntries" :key="e.entry_id">
+                            <tr @click="selectedMemoryEntry = (selectedMemoryEntry === e ? null : e)" style="cursor:pointer">
+                                <td><span class="badge badge-purple" x-text="e.tier"></span></td>
+                                <td><span class="badge badge-gray" x-text="e.entry_type"></span></td>
+                                <td style="max-width:400px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap"
+                                    x-text="e.content?.substring(0, 150)"></td>
+                                <td x-text="formatBytes(e.byte_size || 0)"></td>
+                                <td style="white-space:nowrap" x-text="formatDateTime(e.created_at)"></td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+
+            <template x-if="selectedMemoryEntry">
+                <div class="card" style="margin-top:16px">
+                    <h3 style="font-size:14px; margin-bottom:8px">Memory Entry</h3>
+                    <div style="font-size:12px; color:var(--text-muted); margin-bottom:8px;">
+                        <span x-text="selectedMemoryEntry.tier"></span> &middot;
+                        <span x-text="selectedMemoryEntry.entry_type"></span> &middot;
+                        <span x-text="selectedMemoryEntry.entry_id"></span>
+                    </div>
+                    <div class="json-view" x-text="selectedMemoryEntry.content"></div>
+                </div>
+            </template>
+        </div>
+
+    </main>
+</div>
+
+<script>
+function app() {
+    return {
+        page: 'dashboard',
+        ws: { state: { connected: false, events: [] } },
+        toasts: [],
+
+        // Dashboard
+        dash: null,
+
+        // Profiles
+        profileList: [],
+        showCreateProfile: false,
+        newProfile: { name: '', display_name: '', role: 'project_manager', parent: '', department: '', description: '', purpose: '', skip_onboarding: true },
+        creatingProfile: false,
+
+        // Profile detail
+        selectedProfile: '',
+        currentProfile: null,
+        profileGateway: null,
+        profileTab: 'docs',
+        soulContent: '',
+        profileFiles: [],
+        // Agent docs
+        showAiGenerate: false,
+        aiPurpose: '',
+        aiGenerating: false,
+        agentDocNames: ['PLAYBOOK.md', 'SOUL.md', 'HANDOFF.md', 'WORKFLOWS.md', 'TOOLS.md', 'CONTEXT.md'],
+        agentDocExists: {},
+        activeDoc: null,
+        activeDocContent: '',
+        profileMessages: [],
+        profileWorkers: [],
+        profileMemoryEntries: [],
+        editingFile: null,
+        editingFileContent: '',
+
+        // Messages
+        messageList: [],
+        msgFilter: { profile: '', type: '', status: '' },
+        selectedMessage: null,
+
+        // Chains
+        chainList: [],
+        chainFilter: { status: '' },
+
+        // Workers
+        workerList: [],
+        workerFilter: { status: '' },
+
+        // Memory
+        memoryProfiles: [],
+        memoryProfile: '',
+        memoryEntries: [],
+        selectedMemoryEntry: null,
+
+        // Setup Wizard
+        setupSteps: ['Health Check', 'Scan & Register', 'Generate Docs', 'Gateways', 'Verify'],
+        setupStep: 0,
+        setupHealth: null,
+        setupScan: null,
+        setupRegisterSet: new Set(),
+        setupBatchRole: 'project_manager',
+        setupBatchParent: 'cto',
+        setupBatchDept: 'engineering',
+        setupGenerating: {},
+        setupGeneratingAll: false,
+        setupGwLoading: false,
+        setupTestTo: 'cto',
+        setupTestMsg: 'Reply with exactly: TEST OK',
+        setupTestSending: false,
+        setupTestResult: null,
+
+        async init() {
+            // Connect WebSocket
+            this.ws = createWSClient(window.WS_PORT || 8766);
+
+            // Load initial data
+            await this.loadDashboard();
+            await this.loadProfiles();
+
+            // Auto-refresh dashboard on WS events
+            window.addEventListener('ws-event', () => {
+                if (this.page === 'dashboard') {
+                    clearTimeout(this._dashTimer);
+                    this._dashTimer = setTimeout(() => this.loadDashboard(), 2000);
+                }
+            });
+
+            // Poll dashboard every 10s as fallback
+            setInterval(() => {
+                if (this.page === 'dashboard') this.loadDashboard();
+            }, 10000);
+        },
+
+        go(page) {
+            this.page = page;
+            this.selectedMessage = null;
+            this.selectedMemoryEntry = null;
+            if (page === 'dashboard') this.loadDashboard();
+            if (page === 'profiles') this.loadProfiles();
+            if (page === 'org-chart') this.$nextTick(() => this.renderOrgChart());
+            if (page === 'messages') this.loadMessages();
+            if (page === 'chains') this.loadChains();
+            if (page === 'workers') this.loadWorkers();
+            if (page === 'memory') this.loadMemoryProfiles();
+            if (page === 'setup') this.loadSetup();
+        },
+
+        async loadDashboard() {
+            try { this.dash = await API.dashboard(); } catch(e) { console.error(e); }
+        },
+
+        async loadProfiles() {
+            try { this.profileList = await API.profiles(); } catch(e) { console.error(e); }
+        },
+
+        async openProfile(name) {
+            this.selectedProfile = name;
+            this.page = 'profile-detail';
+            this.profileTab = 'docs';
+            this.editingFile = null;
+            this.activeDoc = null;
+            this.activeDocContent = '';
+            try {
+                this.currentProfile = await API.profile(name);
+                const gw = await API.get(`/api/gateways/${name}`);
+                this.profileGateway = gw;
+                await this.loadAgentDocs();
+            } catch(e) { console.error(e); }
+        },
+
+        async createProfile() {
+            this.creatingProfile = true;
+            try {
+                const purpose = this.newProfile.purpose;
+                const createData = { ...this.newProfile, generate_docs: !purpose };
+                await API.createProfile(createData);
+                this.toast('Profile created', 'success');
+
+                if (purpose) {
+                    this.toast('Generating AI-tailored docs... (this takes ~1 min per doc)', 'success');
+                    try {
+                        const res = await API.post(`/api/profiles/${this.newProfile.name}/generate-ai-docs`, {
+                            purpose, overwrite: true,
+                        });
+                        const count = res.generated?.length || 0;
+                        const failed = res.failed?.length || 0;
+                        if (failed) {
+                            this.toast(`Generated ${count} docs, ${failed} failed`, 'error');
+                        } else {
+                            this.toast(`Generated ${count} AI-tailored docs`, 'success');
+                        }
+                    } catch(e) {
+                        this.toast('AI gen failed, using templates', 'error');
+                        await API.post(`/api/profiles/${this.newProfile.name}/generate-docs`, { overwrite: true });
+                    }
+                }
+
+                this.showCreateProfile = false;
+                this.newProfile = { name: '', display_name: '', role: 'project_manager', parent: '', department: '', description: '', purpose: '', skip_onboarding: true };
+                await this.loadProfiles();
+            } catch(e) { this.toast(e.message, 'error'); }
+            this.creatingProfile = false;
+        },
+
+        async activateProfileAction() {
+            try {
+                await API.activateProfile(this.selectedProfile);
+                this.currentProfile = await API.profile(this.selectedProfile);
+                this.toast('Profile activated', 'success');
+            } catch(e) { this.toast(e.message, 'error'); }
+        },
+
+        async suspendProfileAction() {
+            try {
+                await API.suspendProfile(this.selectedProfile);
+                this.currentProfile = await API.profile(this.selectedProfile);
+                this.toast('Profile suspended', 'success');
+            } catch(e) { this.toast(e.message, 'error'); }
+        },
+
+        async toggleGateway() {
+            try {
+                if (this.profileGateway?.running) {
+                    await API.stopGateway(this.selectedProfile);
+                    this.toast('Gateway stopped', 'success');
+                } else {
+                    await API.startGateway(this.selectedProfile);
+                    this.toast('Gateway started', 'success');
+                }
+                // Refresh after a moment
+                setTimeout(async () => {
+                    this.profileGateway = await API.get(`/api/gateways/${this.selectedProfile}`);
+                }, 1000);
+            } catch(e) { this.toast(e.message, 'error'); }
+        },
+
+        async loadAgentDocs() {
+            // Check which doc files exist for this profile
+            try {
+                const res = await API.profileFiles(this.selectedProfile);
+                const fileNames = (res.files || []).map(f => f.name);
+                const exists = {};
+                for (const doc of this.agentDocNames) {
+                    exists[doc] = fileNames.includes(doc);
+                }
+                this.agentDocExists = exists;
+                // Auto-select first existing doc, or SOUL.md
+                if (!this.activeDoc) {
+                    const first = this.agentDocNames.find(d => exists[d]) || 'SOUL.md';
+                    this.activeDoc = first;
+                    await this.loadAgentDoc(first);
+                }
+            } catch(e) { console.error(e); }
+        },
+
+        async loadAgentDoc(docName) {
+            this.activeDoc = docName;
+            try {
+                const res = await API.readFile(this.selectedProfile, docName);
+                this.activeDocContent = res.content || '';
+            } catch(e) {
+                this.activeDocContent = '';
+            }
+        },
+
+        async saveAgentDoc() {
+            if (!this.activeDoc) return;
+            try {
+                await API.saveFile(this.selectedProfile, this.activeDoc, this.activeDocContent);
+                this.agentDocExists[this.activeDoc] = true;
+                this.toast(`${this.activeDoc} saved`, 'success');
+            } catch(e) { this.toast(e.message, 'error'); }
+        },
+
+        async runAiGenerate() {
+            if (!this.aiPurpose.trim()) return;
+            this.aiGenerating = true;
+            try {
+                const res = await API.post(`/api/profiles/${this.selectedProfile}/generate-ai-docs`, {
+                    purpose: this.aiPurpose,
+                    overwrite: true,
+                });
+                const count = res.generated?.length || 0;
+                const failed = res.failed?.length || 0;
+                if (failed) {
+                    this.toast(`Generated ${count} docs, ${failed} failed`, 'error');
+                } else {
+                    this.toast(`Generated ${count} AI-tailored docs`, 'success');
+                }
+                this.showAiGenerate = false;
+                await this.loadAgentDocs();
+                if (this.activeDoc) await this.loadAgentDoc(this.activeDoc);
+            } catch(e) { this.toast(e.message, 'error'); }
+            this.aiGenerating = false;
+        },
+
+        async generateDocs(overwrite) {
+            try {
+                const res = await API.post(`/api/profiles/${this.selectedProfile}/generate-docs`, { overwrite });
+                if (res.generated?.length) {
+                    this.toast(`Generated: ${res.generated.join(', ')}`, 'success');
+                    await this.loadAgentDocs();
+                    if (this.activeDoc) await this.loadAgentDoc(this.activeDoc);
+                } else {
+                    this.toast('All docs already exist (use Regenerate All to overwrite)', 'success');
+                }
+            } catch(e) { this.toast(e.message, 'error'); }
+        },
+
+        async saveSoulMd() {
+            try {
+                await API.saveSoul(this.selectedProfile, this.soulContent);
+                this.toast('SOUL.md saved', 'success');
+            } catch(e) { this.toast(e.message, 'error'); }
+        },
+
+        async loadProfileFiles() {
+            try {
+                const res = await API.profileFiles(this.selectedProfile);
+                this.profileFiles = res.files || [];
+            } catch(e) { this.profileFiles = []; }
+        },
+
+        async editFile(name) {
+            try {
+                const res = await API.readFile(this.selectedProfile, name);
+                this.editingFile = name;
+                this.editingFileContent = res.content || '';
+            } catch(e) { this.toast(e.message, 'error'); }
+        },
+
+        async saveFileContent() {
+            try {
+                await API.saveFile(this.selectedProfile, this.editingFile, this.editingFileContent);
+                this.toast('File saved', 'success');
+                this.editingFile = null;
+            } catch(e) { this.toast(e.message, 'error'); }
+        },
+
+        async loadProfileMessages() {
+            try {
+                const res = await API.messages({ profile: this.selectedProfile, limit: 50 });
+                this.profileMessages = res.messages || [];
+            } catch(e) { this.profileMessages = []; }
+        },
+
+        async loadProfileWorkers() {
+            try {
+                const res = await API.workers({ pm: this.selectedProfile, limit: 50 });
+                this.profileWorkers = res.workers || [];
+            } catch(e) { this.profileWorkers = []; }
+        },
+
+        async loadProfileMemory() {
+            try {
+                const res = await API.memoryEntries(this.selectedProfile, { limit: 50 });
+                this.profileMemoryEntries = res.entries || [];
+            } catch(e) { this.profileMemoryEntries = []; }
+        },
+
+        async loadMessages() {
+            try {
+                const params = {};
+                if (this.msgFilter.profile) params.profile = this.msgFilter.profile;
+                if (this.msgFilter.type) params.type = this.msgFilter.type;
+                if (this.msgFilter.status) params.status = this.msgFilter.status;
+                params.limit = 100;
+                const res = await API.messages(params);
+                this.messageList = res.messages || [];
+            } catch(e) { console.error(e); }
+        },
+
+        async loadChains() {
+            try {
+                const params = {};
+                if (this.chainFilter.status) params.status = this.chainFilter.status;
+                this.chainList = await API.chains(params);
+            } catch(e) { console.error(e); }
+        },
+
+        async loadWorkers() {
+            try {
+                const params = {};
+                if (this.workerFilter.status) params.status = this.workerFilter.status;
+                const res = await API.workers(params);
+                this.workerList = res.workers || [];
+            } catch(e) { console.error(e); }
+        },
+
+        async loadMemoryProfiles() {
+            try { this.memoryProfiles = await API.memoryProfiles(); } catch(e) { this.memoryProfiles = []; }
+        },
+
+        async loadMemory() {
+            if (!this.memoryProfile) { this.memoryEntries = []; return; }
+            try {
+                const res = await API.memoryEntries(this.memoryProfile, { limit: 100 });
+                this.memoryEntries = res.entries || [];
+            } catch(e) { this.memoryEntries = []; }
+        },
+
+        // Setup Wizard
+        async loadSetup() {
+            await this.runHealthCheck();
+            await this.loadSetupScan();
+        },
+
+        async runHealthCheck() {
+            try { this.setupHealth = await API.get('/api/setup/health'); } catch(e) { this.toast(e.message, 'error'); }
+        },
+
+        async loadSetupScan() {
+            try {
+                this.setupScan = await API.get('/api/setup/scan');
+                if (!this.setupTestTo) {
+                    const first = this.setupScan?.profiles?.find(p => p.registered && p.status === 'active' && p.name !== 'hermes');
+                    if (first) this.setupTestTo = first.name;
+                }
+            } catch(e) { this.toast(e.message, 'error'); }
+        },
+
+        toggleRegister(name) {
+            if (this.setupRegisterSet.has(name)) {
+                this.setupRegisterSet.delete(name);
+            } else {
+                this.setupRegisterSet.add(name);
+            }
+            this.setupRegisterSet = new Set(this.setupRegisterSet);
+        },
+
+        toggleAllRegister(event) {
+            const checked = event.target.checked;
+            const unreg = (this.setupScan?.profiles || []).filter(p => !p.registered && p.on_disk);
+            this.setupRegisterSet = checked ? new Set(unreg.map(p => p.name)) : new Set();
+        },
+
+        async registerBatch() {
+            const profiles = [...this.setupRegisterSet].map(name => ({
+                name,
+                display_name: name.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+                role: this.setupBatchRole,
+                parent: this.setupBatchParent || undefined,
+                department: this.setupBatchDept,
+                skip_onboarding: true,
+            }));
+            try {
+                const res = await API.post('/api/setup/register-batch', { profiles });
+                const ok = res.results?.filter(r => r.status === 'created').length || 0;
+                const err = res.results?.filter(r => r.status === 'error').length || 0;
+                this.toast(`Registered ${ok} profiles` + (err ? `, ${err} errors` : ''), err ? 'error' : 'success');
+                this.setupRegisterSet = new Set();
+                await this.loadSetupScan();
+                await this.loadProfiles();
+            } catch(e) { this.toast(e.message, 'error'); }
+        },
+
+        async generateSetupDocs(name, overwrite) {
+            this.setupGenerating[name] = true;
+            this.setupGenerating = { ...this.setupGenerating };
+            try {
+                await API.post(`/api/profiles/${name}/generate-docs`, { overwrite });
+                this.toast(`Docs generated for ${name}`, 'success');
+                await this.loadSetupScan();
+            } catch(e) { this.toast(e.message, 'error'); }
+            this.setupGenerating[name] = false;
+            this.setupGenerating = { ...this.setupGenerating };
+        },
+
+        async generateAllMissingDocs() {
+            this.setupGeneratingAll = true;
+            const needsDocs = (this.setupScan?.profiles || []).filter(p => p.registered && p.docs_count < 6);
+            for (const p of needsDocs) {
+                await this.generateSetupDocs(p.name, false);
+            }
+            this.setupGeneratingAll = false;
+        },
+
+        async startAllGateways() {
+            this.setupGwLoading = true;
+            try {
+                const res = await API.post('/api/setup/gateways/start-all');
+                const started = res.results?.filter(r => r.action === 'started').length || 0;
+                const already = res.results?.filter(r => r.action === 'already_running').length || 0;
+                this.toast(`Started ${started}, already running ${already}`, 'success');
+                setTimeout(() => this.loadSetupScan(), 2000);
+            } catch(e) { this.toast(e.message, 'error'); }
+            this.setupGwLoading = false;
+        },
+
+        async stopAllGateways() {
+            this.setupGwLoading = true;
+            try {
+                const res = await API.post('/api/setup/gateways/stop-all');
+                const stopped = res.results?.filter(r => r.action === 'stopped').length || 0;
+                this.toast(`Stopped ${stopped} gateways`, 'success');
+                setTimeout(() => this.loadSetupScan(), 2000);
+            } catch(e) { this.toast(e.message, 'error'); }
+            this.setupGwLoading = false;
+        },
+
+        async startOneGateway(name) {
+            try {
+                await API.startGateway(name);
+                this.toast(`Gateway started for ${name}`, 'success');
+                setTimeout(() => this.loadSetupScan(), 1500);
+            } catch(e) { this.toast(e.message, 'error'); }
+        },
+
+        async stopOneGateway(name) {
+            try {
+                await API.stopGateway(name);
+                this.toast(`Gateway stopped for ${name}`, 'success');
+                setTimeout(() => this.loadSetupScan(), 1500);
+            } catch(e) { this.toast(e.message, 'error'); }
+        },
+
+        async sendTestTask() {
+            this.setupTestSending = true;
+            this.setupTestResult = null;
+            try {
+                this.setupTestResult = await API.post('/api/setup/test', {
+                    to: this.setupTestTo,
+                    message: this.setupTestMsg,
+                });
+            } catch(e) { this.setupTestResult = { error: e.message }; }
+            this.setupTestSending = false;
+        },
+
+        // Org Chart
+        async renderOrgChart() {
+            try {
+                const tree = await API.orgTree();
+                if (!tree.length) return;
+                drawOrgChart(tree[0], '#org-chart-container', (name) => this.openProfile(name));
+            } catch(e) { console.error(e); }
+        },
+
+        // Helpers
+        formatTime(ts) {
+            if (!ts) return '';
+            const d = typeof ts === 'number' ? new Date(ts * 1000) : new Date(ts);
+            return d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        },
+
+        formatDateTime(ts) {
+            if (!ts) return '';
+            const d = new Date(ts);
+            return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
+        },
+
+        formatBytes(b) {
+            if (!b || b === 0) return '0 B';
+            const units = ['B', 'KB', 'MB'];
+            const i = Math.min(Math.floor(Math.log(b) / Math.log(1024)), 2);
+            return (b / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0) + ' ' + units[i];
+        },
+
+        eventIcon(type) {
+            if (type?.includes('message')) return '<span style="color:var(--accent)">&#9993;</span>';
+            if (type?.includes('worker.spawned')) return '<span style="color:var(--green)">&#9881;</span>';
+            if (type?.includes('worker.completed')) return '<span style="color:var(--accent)">&#10003;</span>';
+            if (type?.includes('worker.failed')) return '<span style="color:var(--red)">&#10007;</span>';
+            if (type?.includes('gateway')) return '<span style="color:var(--yellow)">&#9632;</span>';
+            return '<span>&#8226;</span>';
+        },
+
+        eventText(ev) {
+            if (!ev) return '';
+            const t = ev.type || '';
+            if (t.includes('message.task_request'))
+                return `<strong>${ev.from_profile}</strong> &#8594; <strong>${ev.to_profile}</strong> task_request`;
+            if (t.includes('message.task_response'))
+                return `<strong>${ev.from_profile}</strong> &#8594; <strong>${ev.to_profile}</strong> task_response`;
+            if (t.includes('message'))
+                return `<strong>${ev.from_profile}</strong> &#8594; <strong>${ev.to_profile}</strong> ${ev.message_type || t}`;
+            if (t === 'worker.spawned')
+                return `Worker spawned for <strong>${ev.project_manager}</strong>: ${(ev.task_goal || '').substring(0, 60)}`;
+            if (t === 'worker.completed')
+                return `Worker completed for <strong>${ev.project_manager}</strong>`;
+            if (t === 'worker.failed')
+                return `Worker <span style="color:var(--red)">failed</span> for <strong>${ev.project_manager}</strong>`;
+            if (t === 'gateway.started')
+                return `Gateway <span style="color:var(--green)">started</span> for <strong>${ev.profile}</strong>`;
+            if (t === 'gateway.stopped')
+                return `Gateway <span style="color:var(--red)">stopped</span> for <strong>${ev.profile}</strong>`;
+            return t;
+        },
+
+        toast(message, type = 'success') {
+            const id = Date.now();
+            this.toasts.push({ id, message, type, visible: true });
+            setTimeout(() => {
+                const t = this.toasts.find(x => x.id === id);
+                if (t) t.visible = false;
+                setTimeout(() => { this.toasts = this.toasts.filter(x => x.id !== id); }, 300);
+            }, 3000);
+        },
+    };
+}
+
+// D3 Org Chart
+function drawOrgChart(rootData, containerSelector, onClick) {
+    const container = document.querySelector(containerSelector);
+    if (!container) return;
+    container.innerHTML = '';
+
+    const width = container.clientWidth || 900;
+    const nodeW = 160, nodeH = 50, gapX = 20, gapY = 80;
+
+    const root = d3.hierarchy(rootData);
+    const treeLayout = d3.tree().nodeSize([nodeW + gapX, nodeH + gapY]);
+    treeLayout(root);
+
+    // Compute bounds
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    root.each(d => {
+        if (d.x < x0) x0 = d.x;
+        if (d.x > x1) x1 = d.x;
+        if (d.y < y0) y0 = d.y;
+        if (d.y > y1) y1 = d.y;
+    });
+
+    const svgW = x1 - x0 + nodeW + 80;
+    const svgH = y1 - y0 + nodeH + 120;
+
+    const svg = d3.select(containerSelector)
+        .append('svg')
+        .attr('width', Math.max(svgW, width))
+        .attr('height', Math.max(svgH, 400))
+        .append('g')
+        .attr('transform', `translate(${-x0 + nodeW/2 + 20}, 40)`);
+
+    // Links
+    svg.selectAll('.org-link')
+        .data(root.links())
+        .join('path')
+        .attr('class', 'org-link')
+        .attr('d', d => {
+            return `M${d.source.x},${d.source.y + nodeH}
+                    C${d.source.x},${(d.source.y + d.target.y + nodeH) / 2}
+                     ${d.target.x},${(d.source.y + d.target.y + nodeH) / 2}
+                     ${d.target.x},${d.target.y}`;
+        });
+
+    // Nodes
+    const roleColors = {
+        ceo: '#e3b341', department_head: '#58a6ff',
+        project_manager: '#3fb950', specialist: '#bc8cff'
+    };
+
+    const nodes = svg.selectAll('.org-node')
+        .data(root.descendants())
+        .join('g')
+        .attr('class', 'org-node')
+        .attr('transform', d => `translate(${d.x - nodeW/2}, ${d.y})`)
+        .style('cursor', 'pointer')
+        .on('click', (e, d) => onClick(d.data.name));
+
+    nodes.append('rect')
+        .attr('width', nodeW)
+        .attr('height', nodeH)
+        .attr('stroke', d => roleColors[d.data.role] || '#30363d');
+
+    // Status dot
+    nodes.append('circle')
+        .attr('cx', nodeW - 12)
+        .attr('cy', 12)
+        .attr('r', 4)
+        .attr('fill', d => {
+            const s = d.data.status;
+            if (s === 'active') return '#3fb950';
+            if (s === 'onboarding') return '#d29922';
+            if (s === 'suspended') return '#f85149';
+            return '#6e7681';
+        });
+
+    nodes.append('text')
+        .attr('x', nodeW / 2)
+        .attr('y', 22)
+        .attr('text-anchor', 'middle')
+        .text(d => d.data.display_name?.substring(0, 18) || d.data.name);
+
+    nodes.append('text')
+        .attr('class', 'role-text')
+        .attr('x', nodeW / 2)
+        .attr('y', 38)
+        .attr('text-anchor', 'middle')
+        .text(d => d.data.role);
+}
+
+// Set WS port from server (default 8766)
+window.WS_PORT = 8766;
+</script>
+</body>
+</html>
