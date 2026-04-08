@@ -269,7 +269,7 @@ class TestMemoryEntry:
         assert sample_memory_entry.scope == MemoryScope.strategic
         assert sample_memory_entry.tier == MemoryTier.hot
         assert sample_memory_entry.entry_type == MemoryEntryType.decision
-        assert sample_memory_entry.content == "Decided to prioritize Counter-Liquid launch"
+        assert sample_memory_entry.content == "Decided to prioritize Project Alpha launch"
 
     def test_post_init_byte_size_auto(self) -> None:
         """byte_size is auto-calculated if not provided."""
@@ -380,7 +380,7 @@ class TestMemoryEntry:
         assert d["scope"] == "strategic"
         assert d["tier"] == "hot"
         assert d["entry_type"] == "decision"
-        assert d["content"] == "Decided to prioritize Counter-Liquid launch"
+        assert d["content"] == "Decided to prioritize Project Alpha launch"
         assert isinstance(d["created_at"], str)
         assert isinstance(d["byte_size"], int)
 

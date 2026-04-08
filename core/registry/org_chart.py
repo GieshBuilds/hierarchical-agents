@@ -41,8 +41,8 @@ def render_org_chart(
 
         Hermes (CEO) [active]
         ├── CTO (department_head) [active]
-        │   ├── PM: Hier-Arch (project_manager) [active]
-        │   └── PM: Counter-Liquid (project_manager) [active]
+        │   ├── PM: Backend (project_manager) [active]
+        │   └── PM: Frontend (project_manager) [active]
         ├── CMO (department_head) [active]
         │   └── PM: Social Media (project_manager) [active]
         └── COO (department_head) [suspended]

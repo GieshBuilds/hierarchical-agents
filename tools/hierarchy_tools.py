@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 _HIERARCHY_PROJECT_ROOT = os.environ.get(
     "HIERARCHY_PROJECT_ROOT",
-    str(Path.home() / "hermes_work" / "projects" / "hierarchical-architecture"),
+    str(Path(__file__).resolve().parent.parent),
 )
 
 if _HIERARCHY_PROJECT_ROOT not in sys.path:
@@ -315,7 +315,7 @@ def send_to_profile(args: dict, **kwargs) -> str:
 
     # --- Specialist guard ---
     # When hermes (root) tries to send to a specialist, block the send and
-    # redirect to the specialist's parent PM.  Michael can still reach
+    # redirect to the specialist's parent PM.  The owner can still reach
     # specialists directly when he explicitly names them — hermes sets
     # direct=True in that case.
     if from_profile == "hermes" and not direct:
@@ -329,7 +329,7 @@ def send_to_profile(args: dict, **kwargs) -> str:
                         f"'{to}' is a specialist — send to their PM "
                         f"'{parent_pm}' instead.  The PM manages their "
                         f"own specialists.  Use direct=True only when "
-                        f"Michael explicitly names this specialist."
+                        f"the owner explicitly names this specialist."
                     ),
                     "redirect_to": parent_pm,
                 })
@@ -1395,7 +1395,7 @@ SEND_TO_PROFILE_SCHEMA = {
             "direct": {
                 "type": "boolean",
                 "description": (
-                    "Set to true ONLY when Michael explicitly names a specialist "
+                    "Set to true ONLY when the owner explicitly names a specialist "
                     "agent (dev-*, sec-*) as the target. Without this flag, sends "
                     "from hermes to specialists are blocked — route through their "
                     "parent PM instead."
