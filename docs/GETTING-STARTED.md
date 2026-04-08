@@ -4,8 +4,11 @@ This guide walks you through setting up a hierarchical agent organization from s
 
 ## Prerequisites
 
+- **[Hermes](https://github.com/GieshBuilds)** installed and working
 - Python 3.10 or later
-- No external dependencies required (stdlib only)
+- No external dependencies required for core (stdlib only)
+
+> **New to this project?** Start with the [Hermes Integration Guide](HERMES-INTEGRATION.md) — it walks through connecting to your existing Hermes setup end-to-end.
 
 ## Installation
 

@@ -145,14 +145,26 @@ Every profile in the hierarchy gets these tools:
 
 ## Quick Start
 
+### Prerequisites
+
+- **[Hermes](https://github.com/GieshBuilds)** installed with at least one profile in `~/.hermes/profiles/`
+- Python 3.10+
+
 ### Installation
 
 ```bash
 git clone https://github.com/GieshBuilds/hierarchical-agents.git
 cd hierarchical-agents
+pip install -e .
 ```
 
-No `pip install` needed for core functionality — it runs on Python stdlib alone.
+### Sync Your Hermes Profiles
+
+```bash
+python scripts/sync_hermes_profiles.py --show-chart
+```
+
+This scans `~/.hermes/profiles/`, registers your profiles in the hierarchy, and prints the org chart. Re-running is safe — existing profiles are skipped.
 
 ### Build a Hierarchy
 
@@ -338,7 +350,8 @@ Real-time mode polls the SQLite databases for changes and pushes updates to conn
 
 ## Documentation
 
-- **[Getting Started](docs/GETTING-STARTED.md)** — Setup guide: installation, hierarchy creation, messaging, delegation, memory, and the dashboard
+- **[Hermes Integration](docs/HERMES-INTEGRATION.md)** — Full walkthrough: sync profiles, install the gateway, configure tools, set up memory bridge
+- **[Getting Started](docs/GETTING-STARTED.md)** — API reference: hierarchy creation, messaging, delegation, memory, and the dashboard
 - **[Architecture](docs/ARCHITECTURE.md)** — Deep dive: how every module works, data models, schemas, state machines, integration layer, and design patterns
 
 ## Contributing
