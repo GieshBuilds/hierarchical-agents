@@ -293,6 +293,49 @@ hierarchical-agents/
 
 ---
 
+## Web Dashboard
+
+A browser UI for monitoring and managing the hierarchy.
+
+### Install Dependencies
+
+The dashboard requires Flask and websockets (not needed for core functionality):
+
+```bash
+pip install -e ".[ui]"
+```
+
+### Launch
+
+```bash
+python -m ui
+# Starts at http://localhost:5000
+# WebSocket for real-time updates on ws://localhost:5001/ws
+```
+
+### Options
+
+```bash
+python -m ui --port 8080           # Custom HTTP port
+python -m ui --ws-port 8081        # Custom WebSocket port
+python -m ui --no-realtime         # Disable real-time updates (no WebSocket)
+```
+
+### What You Get
+
+| Page | What It Shows |
+|------|-------------|
+| **Org Chart** | Interactive hierarchy tree with roles and status |
+| **Messages** | IPC message bus — pending, delivered, read, expired |
+| **Workers** | Subagent status per PM — running, sleeping, completed |
+| **Chains** | Delegation chain tracking with hop-by-hop status |
+| **Memory** | Per-profile memory browser with tier filtering |
+| **Dashboard** | Aggregate metrics and system health |
+
+Real-time mode polls the SQLite databases for changes and pushes updates to connected browsers via WebSocket.
+
+---
+
 ## Documentation
 
 - **[Getting Started](docs/GETTING-STARTED.md)** — Setup guide: installation, hierarchy creation, messaging, delegation, memory, and the dashboard

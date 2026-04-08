@@ -360,18 +360,42 @@ written = generate_profile_docs(profile_dir, "project_manager", variables)
 
 The UI provides a web interface for monitoring the hierarchy.
 
+### Install Dependencies
+
+The dashboard needs Flask and websockets (not required for core functionality):
+
 ```bash
-python -m ui
-# Starts at http://localhost:5000
-
-# Custom ports
-python -m ui --port 8080 --ws-port 8081
-
-# Without real-time updates
-python -m ui --no-realtime
+pip install -e ".[ui]"
 ```
 
-The dashboard shows the org chart, message bus activity, worker status, delegation chains, and memory.
+### Launch
+
+```bash
+python -m ui
+# HTTP server at http://localhost:5000
+# WebSocket at ws://localhost:5001/ws (real-time updates)
+```
+
+### Options
+
+```bash
+python -m ui --port 8080           # Custom HTTP port
+python -m ui --ws-port 8081        # Custom WebSocket port
+python -m ui --no-realtime         # Disable WebSocket (polling only)
+```
+
+### Features
+
+The dashboard shows:
+
+- **Org Chart** — interactive hierarchy tree with roles and status
+- **Messages** — IPC message bus activity (pending, delivered, read, expired)
+- **Workers** — subagent lifecycle per PM (running, sleeping, completed, archived)
+- **Chains** — delegation chain tracking with hop-by-hop status
+- **Memory** — per-profile memory browser with tier and type filtering
+- **Dashboard** — aggregate metrics and system health
+
+Real-time mode uses a `DatabaseWatcher` that polls the SQLite databases for changes and pushes updates to the browser via WebSocket.
 
 ---
 
