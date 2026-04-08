@@ -274,7 +274,8 @@ hierarchical-agents/
 
 ## Documentation
 
-- **[Getting Started](docs/GETTING-STARTED.md)** — Full setup guide: installation, hierarchy creation, messaging, delegation, memory, templates, and the dashboard
+- **[Getting Started](docs/GETTING-STARTED.md)** — Setup guide: installation, hierarchy creation, messaging, delegation, memory, and the dashboard
+- **[Architecture](docs/ARCHITECTURE.md)** — Deep dive: how every module works, data models, schemas, state machines, integration layer, and design patterns
 
 ## Contributing
 
