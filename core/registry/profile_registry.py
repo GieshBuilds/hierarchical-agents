@@ -154,32 +154,10 @@ class ProfileRegistry:
         if parent is None:
             raise InvalidHierarchy(f"Role '{role}' requires a parent profile")
 
-        # Fetch the parent profile.
+        # Fetch the parent profile — it must exist.
         parent_profile = self._get_profile_row(parent)
         if parent_profile is None:
             raise ProfileNotFound(parent)
-
-        parent_role = Role(parent_profile["role"])
-
-        if role_enum is Role.DEPARTMENT_HEAD:
-            if parent_role is not Role.CEO:
-                raise InvalidHierarchy(
-                    "Department heads must report directly to the CEO"
-                )
-        elif role_enum is Role.PROJECT_MANAGER:
-            if parent_role is not Role.DEPARTMENT_HEAD:
-                raise InvalidHierarchy(
-                    "Project managers must report to a department head"
-                )
-        elif role_enum is Role.SPECIALIST:
-            if parent_role not in (
-                Role.CEO,
-                Role.DEPARTMENT_HEAD,
-                Role.PROJECT_MANAGER,
-            ):
-                raise InvalidHierarchy(
-                    "Specialists must report to a CEO, department head, or project manager"
-                )
 
     def _check_circular(self, profile_name: str, new_parent: str) -> None:
         """Raise ``InvalidHierarchy`` if assigning *new_parent* would create a cycle."""

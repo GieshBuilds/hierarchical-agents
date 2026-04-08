@@ -100,10 +100,11 @@ class TestSpecialistHierarchyValidation:
         with pytest.raises(InvalidHierarchy, match="requires a parent"):
             registry.create_profile(name="bad", role="specialist", parent=None)
 
-    def test_specialist_under_specialist_rejected(self, registry: ProfileRegistry) -> None:
+    def test_specialist_under_specialist_allowed(self, registry: ProfileRegistry) -> None:
+        """Flexible hierarchy allows specialists to parent to other specialists."""
         registry.create_profile(name="s1", role="specialist", parent="pm")
-        with pytest.raises(InvalidHierarchy, match="CEO, department head, or project manager"):
-            registry.create_profile(name="s2", role="specialist", parent="s1")
+        s2 = registry.create_profile(name="s2", role="specialist", parent="s1")
+        assert s2.parent_profile == "s1"
 
 
 # ---------------------------------------------------------------------------
@@ -206,24 +207,23 @@ class TestSpecialistIntegrity:
         spec_issues = [i for i in issues if i.rule_violated == RULE_SPECIALIST_PARENT_PM]
         assert len(spec_issues) == 0
 
-    def test_specialist_under_wrong_parent_detected(self, registry: ProfileRegistry) -> None:
-        """Raw-insert a specialist under another specialist to bypass validation, then scan."""
+    def test_specialist_under_specialist_no_integrity_issue(self, registry: ProfileRegistry) -> None:
+        """Flexible hierarchy allows specialist under specialist — no integrity error."""
         from datetime import datetime, timezone
         now = datetime.now(timezone.utc).isoformat()
-        # First create a valid specialist
         registry.create_profile(name="valid-spec", role="specialist", parent="pm")
-        # Then raw-insert one under it (bypassing validation)
+        # Raw-insert a specialist under another specialist
         with registry._cursor(commit=True) as cur:
             cur.execute(
                 "INSERT INTO profiles VALUES (?,?,?,?,?,?,?,?,?,?)",
-                ("bad-spec", "Bad Spec", "specialist", "valid-spec",
+                ("nested-spec", "Nested Spec", "specialist", "valid-spec",
                  "engineering", "active", now, now, None, None),
             )
 
         issues = scan_integrity(registry)
-        spec_issues = [i for i in issues if i.rule_violated == RULE_SPECIALIST_PARENT_PM]
-        assert len(spec_issues) == 1
-        assert spec_issues[0].profile_name == "bad-spec"
+        # No role-specific parent issues should be raised
+        role_issues = [i for i in issues if i.profile_name == "nested-spec"]
+        assert len(role_issues) == 0
 
 
 # ---------------------------------------------------------------------------

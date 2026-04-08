@@ -60,25 +60,16 @@ class TestDeptHeadParentRules:
         )
         assert profile.parent_profile == "hermes"
 
-    def test_dept_head_cannot_parent_to_dept_head(self, sample_org: ProfileRegistry) -> None:
-        """A dept head cannot have another dept head as parent."""
-        with pytest.raises(InvalidHierarchy):
-            sample_org.create_profile(
-                name="sub-cto",
-                role="department_head",
-                parent="cto",
-                department="engineering",
-            )
-
-    def test_dept_head_cannot_parent_to_pm(self, sample_org: ProfileRegistry) -> None:
-        """A dept head cannot have a PM as parent."""
-        with pytest.raises(InvalidHierarchy):
-            sample_org.create_profile(
-                name="bad-head",
-                role="department_head",
-                parent="pm-alpha",
-                department="engineering",
-            )
+    def test_dept_head_can_parent_to_any_profile(self, sample_org: ProfileRegistry) -> None:
+        """Dept heads can parent to any existing profile (flexible hierarchy)."""
+        # Dept head under another dept head
+        sub = sample_org.create_profile(
+            name="sub-cto",
+            role="department_head",
+            parent="cto",
+            department="engineering",
+        )
+        assert sub.parent_profile == "cto"
 
     def test_dept_head_cannot_have_no_parent(self, registry: ProfileRegistry) -> None:
         """A dept head must have a parent (the CEO)."""
@@ -102,32 +93,32 @@ class TestDeptHeadParentRules:
 
 
 class TestPMParentRules:
-    """Project managers must have parent_profile pointing to a dept head."""
+    """Project managers must have a parent profile."""
 
-    def test_pm_must_parent_to_dept_head(self, sample_org: ProfileRegistry) -> None:
+    def test_pm_can_parent_to_dept_head(self, sample_org: ProfileRegistry) -> None:
         """Creating a PM with a dept head as parent should succeed."""
         pm = sample_org.get_profile("pm-alpha")
         assert pm.parent_profile == "cto"
 
-    def test_pm_cannot_parent_to_ceo(self, registry: ProfileRegistry) -> None:
-        """A PM cannot have the CEO as parent."""
-        with pytest.raises(InvalidHierarchy):
-            registry.create_profile(
-                name="pm-bad",
-                role="project_manager",
-                parent="hermes",
-                department="engineering",
-            )
+    def test_pm_can_parent_to_ceo(self, registry: ProfileRegistry) -> None:
+        """A PM can report directly to the CEO."""
+        pm = registry.create_profile(
+            name="pm-direct",
+            role="project_manager",
+            parent="hermes",
+            department="engineering",
+        )
+        assert pm.parent_profile == "hermes"
 
-    def test_pm_cannot_parent_to_pm(self, sample_org: ProfileRegistry) -> None:
-        """A PM cannot have another PM as parent."""
-        with pytest.raises(InvalidHierarchy):
-            sample_org.create_profile(
-                name="pm-under-pm",
-                role="project_manager",
-                parent="pm-alpha",
-                department="engineering",
-            )
+    def test_pm_can_parent_to_pm(self, sample_org: ProfileRegistry) -> None:
+        """A PM can have another PM as parent (flexible hierarchy)."""
+        pm = sample_org.create_profile(
+            name="pm-under-pm",
+            role="project_manager",
+            parent="pm-alpha",
+            department="engineering",
+        )
+        assert pm.parent_profile == "pm-alpha"
 
     def test_pm_cannot_have_no_parent(self, registry: ProfileRegistry) -> None:
         """A PM must have a parent."""

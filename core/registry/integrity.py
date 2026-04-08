@@ -116,11 +116,34 @@ def _check_exactly_one_ceo(
     return issues
 
 
+RULE_NON_CEO_HAS_PARENT = "non_ceo_has_parent"
+
+
+def _check_non_ceo_has_parent(
+    profiles: list[dict],
+) -> list[IntegrityIssue]:
+    """All non-archived, non-CEO profiles must have a parent."""
+    issues: list[IntegrityIssue] = []
+    for p in profiles:
+        if (
+            p["role"] != Role.CEO.value
+            and p["status"] != Status.ARCHIVED.value
+            and p["parent_profile"] is None
+        ):
+            issues.append(IntegrityIssue(
+                severity=Severity.ERROR.value,
+                profile_name=p["profile_name"],
+                message=f"{p['role']} has no parent — all non-CEO profiles require a parent",
+                rule_violated=RULE_NON_CEO_HAS_PARENT,
+            ))
+    return issues
+
+
 def _check_dept_heads_parent_ceo(
     profiles: list[dict],
     by_name: dict[str, dict],
 ) -> list[IntegrityIssue]:
-    """All non-archived department heads must parent to the CEO."""
+    """Legacy check — kept for backward compatibility but no longer used by scan_integrity."""
     issues: list[IntegrityIssue] = []
     for p in profiles:
         if (
@@ -157,7 +180,7 @@ def _check_pms_parent_dept_head(
     profiles: list[dict],
     by_name: dict[str, dict],
 ) -> list[IntegrityIssue]:
-    """All non-archived PMs must parent to a department head."""
+    """All non-archived PMs must parent to the CEO or a department head."""
     issues: list[IntegrityIssue] = []
     for p in profiles:
         if (
@@ -169,7 +192,7 @@ def _check_pms_parent_dept_head(
                 issues.append(IntegrityIssue(
                     severity=Severity.ERROR.value,
                     profile_name=p["profile_name"],
-                    message="Project manager has no parent — must report to a department head",
+                    message="Project manager has no parent — must report to the CEO or a department head",
                     rule_violated=RULE_PM_PARENT_DEPT_HEAD,
                 ))
                 continue
@@ -177,13 +200,13 @@ def _check_pms_parent_dept_head(
             if parent is None:
                 # Orphan check handled separately
                 continue
-            if parent["role"] != Role.DEPARTMENT_HEAD.value:
+            if parent["role"] not in (Role.CEO.value, Role.DEPARTMENT_HEAD.value):
                 issues.append(IntegrityIssue(
                     severity=Severity.ERROR.value,
                     profile_name=p["profile_name"],
                     message=(
                         f"Project manager parents to '{parent_name}' "
-                        f"(role={parent['role']}) — must report to a department head"
+                        f"(role={parent['role']}) — must report to the CEO or a department head"
                     ),
                     rule_violated=RULE_PM_PARENT_DEPT_HEAD,
                 ))
@@ -425,9 +448,7 @@ def scan_integrity(registry: ProfileRegistry) -> list[IntegrityIssue]:
     # Run all checks.
     issues: list[IntegrityIssue] = []
     issues.extend(_check_exactly_one_ceo(profiles))
-    issues.extend(_check_dept_heads_parent_ceo(profiles, by_name))
-    issues.extend(_check_pms_parent_dept_head(profiles, by_name))
-    issues.extend(_check_specialists_parent_pm(profiles, by_name))
+    issues.extend(_check_non_ceo_has_parent(profiles))
     issues.extend(_check_orphaned_profiles(profiles, by_name))
     issues.extend(_check_circular_references(profiles, by_name))
     issues.extend(_check_archived_with_active_dependents(profiles, children_map))

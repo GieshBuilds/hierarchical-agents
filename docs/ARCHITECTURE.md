@@ -37,16 +37,16 @@ The registry organizes Hermes profiles into a hierarchy with enforced role const
 
 ### Roles
 
-Four roles, each with strict parenting rules:
+Four roles with flexible parenting:
 
 | Role | Can Report To | Limit |
 |------|--------------|-------|
 | `ceo` | Nobody (root) | Exactly one, auto-created as `hermes` |
-| `department_head` | CEO only | Unlimited |
-| `project_manager` | Department Head only | Unlimited |
-| `specialist` | CEO, Department Head, or Project Manager | Unlimited |
+| `department_head` | Any profile | Unlimited |
+| `project_manager` | Any profile | Unlimited |
+| `specialist` | Any profile | Unlimited |
 
-These rules are enforced on every `create_profile()` and `reassign()` call. Circular references are detected by walking the parent chain to the root.
+The only hard rules: one CEO with no parent, every other profile must have a parent, and no circular references. Beyond that, you can structure the hierarchy however you want — PMs directly under the CEO, specialists under other specialists, whatever fits your org. Circular references are detected by walking the parent chain to the root.
 
 ### Profile Data
 
@@ -590,6 +590,25 @@ The gateway strips tool traces from worker output, extracting only the final pro
 1. Check if the target profile has a directory in `~/.hermes/profiles/`
 2. If the profile's gateway is active, deliver directly
 3. If not, activate the profile (spawn its gateway daemon) and queue the message
+
+### Memory Bridge
+
+`MemoryBridge` handles bidirectional sync between Hermes' native `MEMORY.md` files and the hierarchy's structured SQLite memory. Runs on profile activation.
+
+**Native → Hierarchy (import):**
+- Reads `~/.hermes/profiles/<name>/memories/MEMORY.md`
+- Parses each line/bullet as a memory entry
+- Deduplicates via content hashing against existing hierarchy entries
+- Imports new entries into the profile's `MemoryStore` as `context` type, `warm` tier
+
+**Hierarchy → Native (export):**
+- Reads hot-tier and recent warm-tier entries from the profile's `MemoryStore`
+- Reads ancestor memory (hot tier from chain of command)
+- Reads relevant shared knowledge from the `KnowledgeBase`
+- Writes everything to `~/.hermes/profiles/<name>/memories/HIERARCHY_CONTEXT.md`
+- Hermes picks up this file at session startup alongside the native `MEMORY.md`
+
+This ensures agents see hierarchy context in their system prompt without having to call tools first, and that anything they save in native `MEMORY.md` flows into the structured hierarchy store.
 
 ### Delivery
 

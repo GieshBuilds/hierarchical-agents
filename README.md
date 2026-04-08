@@ -24,10 +24,10 @@ This project solves all of that.
 
 | Capability | What Hermes Has | What This Adds |
 |-----------|----------------|---------------|
-| **Identity** | Profile directories with SOUL.md, skills, state | Org chart registry with roles (CEO, Dept Head, PM, Specialist) and hierarchy rules |
+| **Identity** | Profile directories with SOUL.md, skills, state | Org chart registry with roles (CEO, Dept Head, PM, Specialist) and flexible hierarchy |
 | **Communication** | None between profiles | IPC message bus with priority, TTL, correlation, broadcast, escalation |
-| **Delegation** | None | Delegation chains that track tasks from CEO -> Dept Head -> PM -> Worker and propagate results back up |
-| **Memory** | Per-profile session state | Tiered memory (hot/warm/cool/cold) with scoping, GC, shared knowledge base, and ancestor read access |
+| **Delegation** | None | Delegation chains that track tasks through the hierarchy and propagate results back up |
+| **Memory** | Per-profile markdown files (MEMORY.md) | Tiered memory (hot/warm/cool/cold) with scoping, GC, shared knowledge base, ancestor read access, and **bidirectional sync** with native Hermes memory |
 | **Workers** | Can spawn subagents | Per-PM worker registry with lifecycle tracking (running/sleeping/completed/archived) and completion callbacks |
 | **Coordination** | None | ChainOrchestrator for end-to-end task flow with event-driven result propagation |
 
@@ -35,31 +35,51 @@ This project solves all of that.
 
 ### The Org Chart (example)
 
-Existing Hermes profiles are synced into a hierarchy via `ProfileBridge`. Each profile gets a role and a parent:
+Existing Hermes profiles are synced into a hierarchy via `ProfileBridge`. Each profile gets a role and a parent. The hierarchy is flexible — you structure it however makes sense for your org:
 
+**Flat (PMs report directly to CEO):**
 ```
-                          +---------+
-                          | hermes  |  CEO — strategic decisions, top-level delegation
-                          +----+----+
-                               |
-              +----------------+----------------+
-              |                |                |
-         +----+----+     +----+----+      +----+----+
-         |   CTO   |     |   CMO   |      |   CFO   |  Dept Heads — domain ownership
-         +----+----+     +----+----+      +----+----+
-              |                |                |
-        +-----+-----+    +----+----+     +-----+-----+
-        | backend-pm |    | mktg-pm |    | finance-pm |  PMs — task decomposition
-        +-----+------+   +----+----+    +-----+------+
-              |                                |
-         +----+----+                      +----+----+
-         |  dev-*  |                      |  sec-*  |   Specialists — persistent experts
-         +----+----+                      +----+----+
+         +---------+
+         | hermes  |  CEO
+         +----+----+
               |
-          +---+---+
-          | sa-*  |  Workers — disposable subagents spawned for a single task
-          +-------+
+    +---------+---------+
+    |         |         |
+ +--+--+  +--+--+  +---+---+
+ | pm-a |  | pm-b |  | pm-c |  PMs — report directly to CEO
+ +--+---+  +------+  +------+
+    |
+ +--+--+
+ |dev-a|  Specialists
+ +-----+
 ```
+
+**Layered (with department heads):**
+```
+         +---------+
+         | hermes  |  CEO
+         +----+----+
+              |
+       +------+------+
+       |             |
+  +----+----+   +----+----+
+  |   CTO   |   |   CMO   |  Dept Heads
+  +----+----+   +----+----+
+       |             |
+  +----+----+   +----+----+
+  |backend-pm|  | mktg-pm |  PMs
+  +----+-----+  +---------+
+       |
+  +----+----+
+  |  dev-*  |  Specialists
+  +----+----+
+       |
+   +---+---+
+   | sa-*  |  Workers (disposable)
+   +-------+
+```
+
+Any non-CEO role can report to any other profile. The only hard rules: one CEO (auto-created as `hermes`), every other profile must have a parent, and no circular references.
 
 Each of these is a real Hermes profile with its own `~/.hermes/profiles/<name>/` directory. The hierarchy layer organizes them, gives them tools to communicate, and tracks work flowing between them.
 
@@ -80,6 +100,7 @@ Each profile gets scoped memory on top of Hermes' native session state:
 - **Personal memory** — decisions, learnings, context scoped to their role. Entries age through tiers (hot -> warm -> cool -> cold) with automatic garbage collection.
 - **Shared knowledge base** — organizational knowledge any agent can publish to or search. Standards, decisions, patterns that the whole org needs.
 - **Ancestor access** — agents can read memory from profiles above them in the chain of command (read-up only, never sideways).
+- **Bidirectional sync** — a memory bridge syncs between Hermes' native `MEMORY.md` files and the hierarchy's structured SQLite memory. Native memories are imported into the hierarchy store; hierarchy context is exported to `HIERARCHY_CONTEXT.md` so Hermes reads it at session startup. Sync runs on profile activation.
 
 ### What Gets Installed
 

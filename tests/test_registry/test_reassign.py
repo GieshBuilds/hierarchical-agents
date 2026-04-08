@@ -62,30 +62,25 @@ class TestReassignSuccess:
         assert profile.parent_profile == "hermes"
 
 
-class TestReassignInvalidParent:
-    """Reassignment to an invalid parent role should be rejected."""
+class TestReassignFlexible:
+    """Reassignment allows flexible parenting — only CEO and circular refs are restricted."""
 
-    def test_cannot_reassign_pm_to_pm(self, sample_org: ProfileRegistry) -> None:
-        """A PM cannot be reassigned to report to another PM."""
-        with pytest.raises(InvalidHierarchy):
-            sample_org.reassign("pm-alpha", new_parent="pm-beta")
+    def test_can_reassign_pm_to_pm(self, sample_org: ProfileRegistry) -> None:
+        """A PM can be reassigned to report to another PM."""
+        profile = sample_org.reassign("pm-alpha", new_parent="pm-beta")
+        assert profile.parent_profile == "pm-beta"
 
-    def test_cannot_reassign_pm_to_ceo(self, sample_org: ProfileRegistry) -> None:
-        """A PM cannot be reassigned to report directly to the CEO."""
-        with pytest.raises(InvalidHierarchy):
-            sample_org.reassign("pm-alpha", new_parent="hermes")
+    def test_can_reassign_pm_to_ceo(self, sample_org: ProfileRegistry) -> None:
+        """A PM can be reassigned to report directly to the CEO."""
+        profile = sample_org.reassign("pm-alpha", new_parent="hermes")
+        assert profile.parent_profile == "hermes"
 
-    def test_cannot_reassign_dept_head_to_pm(self, sample_org: ProfileRegistry) -> None:
-        """A dept head cannot be reassigned to report to a PM."""
-        with pytest.raises(InvalidHierarchy):
-            sample_org.reassign("cto", new_parent="pm-alpha")
-
-    def test_cannot_reassign_dept_head_to_dept_head(
+    def test_can_reassign_dept_head_to_dept_head(
         self, sample_org: ProfileRegistry
     ) -> None:
-        """A dept head cannot report to another dept head."""
-        with pytest.raises(InvalidHierarchy):
-            sample_org.reassign("cto", new_parent="cmo")
+        """A dept head can report to another dept head."""
+        profile = sample_org.reassign("cmo", new_parent="cto")
+        assert profile.parent_profile == "cto"
 
     def test_cannot_reassign_ceo(self, sample_org: ProfileRegistry) -> None:
         """The CEO has no parent and should not be reassignable."""

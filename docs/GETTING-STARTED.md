@@ -29,9 +29,9 @@ The system models an **organizational chart** for AI agents. Every agent has a p
 | Role | Description | Reports To |
 |------|-------------|------------|
 | **CEO** | Top of the hierarchy. Auto-created as `hermes` on init. | Nobody |
-| **Department Head** | Domain owner (e.g., CTO, CMO). | CEO |
-| **Project Manager** | Manages a specific project. Spawns workers. | Department Head |
-| **Specialist** | Persistent expert agent for complex subtasks. | CEO, Dept Head, or PM |
+| **Department Head** | Domain owner (e.g., CTO, CMO). Optional layer. | Any profile |
+| **Project Manager** | Manages a specific project. Spawns workers. | Any profile (CEO, Dept Head, etc.) |
+| **Specialist** | Persistent expert agent for complex subtasks. | Any profile |
 
 ### The Five Subsystems
 
@@ -53,7 +53,30 @@ from core.registry import ProfileRegistry
 # Initialize registry — CEO 'hermes' is created automatically
 registry = ProfileRegistry("./registry.db")
 
-# Add a department head
+# PMs can report directly to the CEO
+registry.create_profile(
+    name="pm-backend",
+    display_name="Backend PM",
+    role="project_manager",
+    parent="hermes",
+)
+
+registry.create_profile(
+    name="pm-frontend",
+    display_name="Frontend PM",
+    role="project_manager",
+    parent="hermes",
+)
+
+# Add a specialist under a PM
+registry.create_profile(
+    name="dev-backend",
+    display_name="Backend Developer",
+    role="specialist",
+    parent="pm-backend",
+)
+
+# Or add a department head layer if you want it
 registry.create_profile(
     name="cto",
     display_name="CTO",
@@ -61,37 +84,15 @@ registry.create_profile(
     parent="hermes",
     department="engineering",
 )
-
-# Add project managers under the CTO
-registry.create_profile(
-    name="pm-backend",
-    display_name="Backend PM",
-    role="project_manager",
-    parent="cto",
-)
-
-registry.create_profile(
-    name="pm-frontend",
-    display_name="Frontend PM",
-    role="project_manager",
-    parent="cto",
-)
-
-# Add a specialist under a PM
-registry.create_profile(
-    name="auth-specialist",
-    display_name="Auth Specialist",
-    role="specialist",
-    parent="pm-backend",
-)
 ```
 
 ### Hierarchy Rules
 
-- Only one CEO is allowed (auto-created).
-- Department Heads must report to the CEO.
-- Project Managers must report to a Department Head.
-- Specialists can report to the CEO, a Department Head, or a Project Manager.
+The hierarchy is flexible — structure it however fits your needs:
+
+- Only one CEO is allowed (auto-created as `hermes`).
+- Every other profile must have a parent.
+- Any non-CEO role can report to any other profile.
 - Circular references are prevented automatically.
 
 ### Profile Lifecycle
