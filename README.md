@@ -1,58 +1,84 @@
 # hierarchical-agents
 
-**A framework-agnostic multi-layer agent hierarchy for orchestrating AI agents in organizational structures.**
+**Organize AI agents like a company. Give them roles, chain of command, messaging, memory, and task delegation — all backed by SQLite.**
 
-Pure Python 3.10+ stdlib. Zero external dependencies. SQLite-backed persistence everywhere.
+Built for the [Hermes](https://github.com/GieshBuilds) agent framework. Pure Python 3.10+ stdlib. Zero external dependencies.
 
 ---
 
-## Features
+## What This Does
 
-- **Zero external dependencies** -- core runs on Python 3.10+ stdlib alone
-- **SQLite-backed persistence** -- thread-safe, zero-config, portable; no database server needed
-- **5-layer organizational hierarchy** -- CEO, Department Heads, Project Managers, Specialists, Workers
-- **IPC message bus** -- inter-profile messaging with priority levels, TTL, and correlation tracking
-- **Tiered memory system** -- hot/warm/cool/cold tiers with automatic garbage collection
-- **Cross-profile knowledge sharing** -- shared knowledge base with scoped per-profile memory
-- **Delegation chains** -- structured task delegation with result propagation up the hierarchy
-- **Framework-agnostic core** -- protocol-based interfaces; bring your own agent framework
-- **Comprehensive test suite** -- extensive coverage across all core modules
+Most multi-agent systems are flat — agents talk to each other without structure. This project gives your agents an **organizational hierarchy**, the same way a company has a CEO, department heads, project managers, and workers.
 
-## Architecture
+Each agent gets:
+- A **profile** with a defined role and position in the org chart
+- An **inbox** for receiving tasks and sending results via IPC
+- **Scoped memory** that persists across sessions, with automatic aging and cleanup
+- Access to a **shared knowledge base** that any agent can read or write
+- The ability to **delegate work** down the chain and **propagate results** back up
+
+The system enforces hierarchy rules (who can delegate to whom), tracks task chains end-to-end, and manages the full lifecycle of worker agents that get spawned for specific tasks.
+
+## How It Works
+
+### The Org Chart
 
 ```
-                          +----------+
-                          |   CEO    |
-                          +----+-----+
+                          +---------+
+                          | hermes  |  CEO — strategic decisions, top-level delegation
+                          +----+----+
                                |
               +----------------+----------------+
               |                |                |
-       +------+------+  +-----+------+  +------+------+
-       |  Dept Head  |  |  Dept Head |  |  Dept Head  |
-       +------+------+  +-----+------+  +------+------+
+         +----+----+     +----+----+      +----+----+
+         |   CTO   |     |   CMO   |      |   CFO   |  Dept Heads — domain ownership
+         +----+----+     +----+----+      +----+----+
               |                |                |
         +-----+-----+    +----+----+     +-----+-----+
-        |     PM    |    |    PM   |     |     PM    |
-        +-----+-----+   +----+----+     +-----+-----+
-              |               |                |
-         +----+----+     +----+----+      +----+----+
-         |Specialist|    |Specialist|     |Specialist|
-         +----+----+     +----+----+      +----+----+
-              |               |                |
-          +---+---+       +---+---+        +---+---+
-          |Worker |       |Worker |        |Worker |
-          +-------+       +-------+        +-------+
+        | backend-pm |    | mktg-pm |    | finance-pm |  PMs — task decomposition
+        +-----+------+   +----+----+    +-----+------+
+              |                                |
+         +----+----+                      +----+----+
+         |  dev-*  |                      |  sec-*  |   Specialists — persistent experts
+         +----+----+                      +----+----+
+              |
+          +---+---+
+          | sa-*  |  Workers — disposable subagents spawned for a single task
+          +-------+
 ```
 
-Tasks flow **down** through delegation chains. Results propagate **up** through the same chain. Each layer has clear responsibilities:
+When the CEO receives "build the authentication system", it delegates to the CTO, who delegates to the backend PM, who spawns a worker to write the code. The result flows back up the same path: worker -> PM -> CTO -> CEO.
 
-| Layer | Role | Responsibility |
-|-------|------|----------------|
-| 1 | CEO | Strategic direction, top-level delegation |
-| 2 | Department Heads | Domain ownership, resource allocation |
-| 3 | Project Managers | Task decomposition, worker lifecycle |
-| 4 | Specialists | Domain expertise, complex subtasks |
-| 5 | Workers | Atomic task execution |
+### Task Flow
+
+1. **Task arrives** at a profile's inbox as a `TASK_REQUEST` message
+2. **Profile delegates** down to a report or spawns a worker
+3. **Worker executes** the task and completes with a result
+4. **Result propagates up** through each hop in the delegation chain via `TASK_RESPONSE` messages
+5. **Originator receives** the final result
+
+Each step is tracked, persisted, and auditable. Messages have priority levels (urgent/normal/low), TTL expiry, and correlation IDs for threading conversations.
+
+### Memory Model
+
+Agents don't start from scratch every session. Each profile has:
+
+- **Personal memory** — decisions, learnings, context scoped to their role. Entries age through tiers (hot -> warm -> cool -> cold) with automatic garbage collection.
+- **Shared knowledge base** — organizational knowledge any agent can publish to or search. Standards, decisions, patterns that the whole org needs.
+- **Ancestor access** — agents can read memory from profiles above them in the chain of command (read-up only, never sideways).
+
+### Profile Lifecycle
+
+New profiles go through onboarding before activation:
+
+1. **Created** — registered in the hierarchy with a role and parent
+2. **Onboarding** — parent submits a brief defining the profile's scope, success criteria, and handoff protocol
+3. **Active** — profile can send/receive messages, spawn workers, and participate in delegation chains
+4. **Suspended/Archived** — taken offline without losing data
+
+Each profile also gets generated documentation (SOUL.md, HANDOFF.md, WORKFLOWS.md, TOOLS.md, CONTEXT.md) that defines its identity and operating procedures.
+
+---
 
 ## Quick Start
 
@@ -63,118 +89,156 @@ git clone https://github.com/GieshBuilds/hierarchical-agents.git
 cd hierarchical-agents
 ```
 
-No `pip install` needed for core functionality -- it runs on Python stdlib alone.
+No `pip install` needed for core functionality — it runs on Python stdlib alone.
 
-### Usage
+### Build a Hierarchy
 
 ```python
 from core.registry import ProfileRegistry
-from core.ipc import MessageBus, MessageType
+from core.ipc import MessageBus
 from core.workers import SubagentRegistry
 from core.integration import ChainOrchestrator
 
-# Set up the hierarchy (CEO 'hermes' auto-created)
+# Initialize — CEO 'hermes' is created automatically
 registry = ProfileRegistry(":memory:")
+
+# Add agents to the org chart
 registry.create_profile(name="cto", role="department_head", parent="hermes")
 registry.create_profile(name="backend-pm", role="project_manager", parent="cto")
 
-# Set up IPC
+# Set up messaging and orchestration
 bus = MessageBus(":memory:")
-
-# Create the orchestrator
 orchestrator = ChainOrchestrator(
     registry=registry,
     bus=bus,
     worker_registry_factory=lambda pm: SubagentRegistry(":memory:"),
 )
+```
 
-# Create and execute a delegation chain
+### Delegate a Task
+
+```python
+# Create a delegation chain
 chain = orchestrator.create_chain("Build the API", originator="hermes")
+
+# Route it down: CEO -> CTO -> PM
 orchestrator.delegate(chain, "hermes", "cto")
 orchestrator.delegate(chain, "cto", "backend-pm")
 
-# Spawn a worker
+# PM spawns a worker to do the actual work
 worker_id = orchestrator.spawn_worker(chain, "backend-pm", "Implement /users endpoint")
 
-# Complete and propagate results
+# Worker completes — result auto-propagates back up to hermes
 orchestrator.complete_worker(chain, "backend-pm", worker_id, "Endpoint implemented")
-orchestrator.propagate_result(chain, "API built successfully")
+```
+
+### Send Messages Directly
+
+```python
+from core.ipc import MessageProtocol, MessagePriority
+
+protocol = MessageProtocol(bus)
+
+# Request/response pattern
+msg_id, corr_id = protocol.send_request(
+    from_profile="hermes",
+    to_profile="cto",
+    payload={"task": "Review backend architecture"},
+    priority=MessagePriority.URGENT,
+)
+
+# Recipient polls their inbox
+messages = bus.poll("cto")
+
+# Respond
+protocol.send_response(
+    correlation_id=corr_id,
+    from_profile="cto",
+    to_profile="hermes",
+    payload={"result": "Architecture approved"},
+)
 ```
 
 ### CLI
 
 ```bash
 # Profile management
-python -m core create-profile --name cto --role department_head --parent hermes
+python -m core create-profile --name cto --display-name CTO \
+    --role department_head --parent hermes
 python -m core list-profiles --json
 python -m core show-org-chart
 
 # Messaging
 python -m core send-message --from hermes --to cto --type task_request \
-    --payload '{"task": "review architecture"}'
+    --payload '{"task": "review architecture"}' --priority urgent
 python -m core poll-messages --profile cto
+
+# Memory
+python -m core inspect-memory hermes --memory-db ./memory.db --scope strategic
+python -m core search-knowledge hermes "database standards"
+
+# Stats
+python -m core ipc-stats
 ```
+
+---
 
 ## Core Modules
 
-| Module | Key Class | Purpose |
-|--------|-----------|---------|
-| `core/registry/` | `ProfileRegistry` | Profile CRUD, hierarchy validation, org chart |
-| `core/ipc/` | `MessageBus`, `MessageProtocol` | Inter-profile messaging with priority, TTL, correlation |
-| `core/workers/` | `SubagentRegistry` | Per-PM worker lifecycle management |
-| `core/memory/` | `MemoryStore`, `KnowledgeBase` | Tiered memory with scoping and garbage collection |
-| `core/integration/` | `ChainOrchestrator` | End-to-end delegation chains with result propagation |
+| Module | Key Class | What It Does |
+|--------|-----------|-------------|
+| `core/registry/` | `ProfileRegistry` | Agent profiles, hierarchy validation, org chart, onboarding |
+| `core/ipc/` | `MessageBus`, `MessageProtocol` | Inter-agent messaging with priority, TTL, correlation, broadcast, escalation |
+| `core/workers/` | `SubagentRegistry` | Worker spawn/sleep/resume/complete lifecycle with completion callbacks |
+| `core/memory/` | `MemoryStore`, `KnowledgeBase` | Per-profile scoped memory with tiered aging + shared cross-profile knowledge |
+| `core/integration/` | `ChainOrchestrator` | End-to-end delegation chains with tracked hops and result propagation |
 
 ## Project Structure
 
 ```
 hierarchical-agents/
-├── core/                    # Framework-agnostic modules (stdlib only)
-│   ├── registry/            # Profile registry + org chart
-│   ├── ipc/                 # Inter-profile messaging
-│   ├── workers/             # Subagent lifecycle management
-│   ├── memory/              # Tiered memory + knowledge base
-│   └── integration/         # Delegation chains + orchestration
-├── integrations/            # Framework-specific adapters
-│   ├── hermes/              # Reference Hermes integration
+├── core/                    # Core modules (stdlib only, zero dependencies)
+│   ├── registry/            # Profile registry, hierarchy rules, org chart
+│   ├── ipc/                 # Message bus, protocol patterns, cleanup
+│   ├── workers/             # Subagent lifecycle, state machine, resume
+│   ├── memory/              # Memory store, knowledge base, tiered storage, GC
+│   └── integration/         # Delegation chains, orchestrator, result propagation
+├── integrations/
+│   ├── hermes/              # Hermes agent framework integration (gateway, bridges, delivery)
 │   ├── claude_code/         # Claude Code context generation
 │   └── openclaw/            # OpenClaw integration
-├── tools/                   # Agent tool definitions
-├── templates/               # Profile templates + generator
-├── ui/                      # Dashboard UI
-├── dashboard/               # Dashboard API
+├── tools/                   # Agent-callable tool definitions (12 tools)
+├── templates/               # Profile document templates + generator
+├── ui/                      # Web dashboard (org chart, messages, workers, memory)
 ├── tests/                   # Test suite
-├── scripts/                 # Utility scripts
 └── pyproject.toml
 ```
 
 ## Design Philosophy
 
-**Stdlib only.** The core has zero external dependencies. Python 3.10+ stdlib provides everything needed: `sqlite3` for persistence, `typing.Protocol` for interfaces, `dataclasses` for data structures, `json` for serialization. This keeps the dependency tree clean and the project portable.
+**Stdlib only.** Zero external dependencies. `sqlite3` for persistence, `typing.Protocol` for interfaces, `dataclasses` for models. Portable and lightweight.
 
-**SQLite everywhere.** Every stateful component -- registry, message bus, memory store, knowledge base, worker registry -- persists to SQLite. Thread-safe, zero-config, single-file databases that work anywhere Python runs. Pass `":memory:"` for ephemeral use or a file path for durable storage.
+**SQLite everywhere.** Every stateful component persists to SQLite. Thread-safe, zero-config, single-file databases. Pass `":memory:"` for testing or a file path for production.
 
-**Protocol interfaces.** Core modules define `typing.Protocol` classes for structural subtyping. Any framework can implement these protocols without inheriting from base classes. The `integrations/` directory contains reference implementations.
+**Hierarchy is enforced, not suggested.** The registry validates every profile creation and delegation against hierarchy rules. Department heads report to the CEO, PMs report to department heads, and so on. Circular references are prevented.
 
-**Auto-bootstrapping.** The CEO profile is created automatically when a `ProfileRegistry` is initialized. No manual setup required to start building a hierarchy.
+**Tasks are tracked end-to-end.** Delegation chains record every hop from originator to worker. Results propagate back up the same path. Nothing gets lost in the middle.
 
-**Shared knowledge, scoped memory.** The `KnowledgeBase` is shared across all profiles for organizational knowledge. `MemoryStore` instances are scoped per-profile with tiered storage (hot/warm/cool/cold) and automatic garbage collection based on access patterns and age.
+**Memory has a lifecycle.** Entries start hot and age through warm, cool, and cold tiers based on access patterns. Garbage collection enforces budgets. Agents don't accumulate unbounded context.
 
-**Framework-agnostic core.** All framework-specific code lives in `integrations/`. The core modules know nothing about Hermes, Claude Code, or any other agent framework. Swap frameworks without touching core logic.
+---
+
+## Documentation
+
+- **[Getting Started](docs/GETTING-STARTED.md)** — Full setup guide: installation, hierarchy creation, messaging, delegation, memory, templates, and the dashboard
 
 ## Contributing
 
 Contributions are welcome.
 
-- **Bug reports and feature requests** -- open an issue
-- **Pull requests** -- fork, branch, and submit a PR
-- **Tests** -- add tests for new functionality; run the suite with `python -m pytest tests/`
-
-Please keep PRs focused on a single change and include tests where applicable.
-
-## Documentation
-
-- **[Getting Started](docs/GETTING-STARTED.md)** — Step-by-step setup guide covering installation, hierarchy creation, messaging, delegation, memory, and the dashboard
+- **Bug reports and feature requests** — open an issue
+- **Pull requests** — fork, branch, and submit a PR
+- **Tests** — run the suite with `python -m pytest tests/`
 
 ## License
 
