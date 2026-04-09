@@ -3,14 +3,14 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.backends._legacy:_Backend"
 
 [project]
-name = "hierarchical-agents"
+name = "hierarchical-agent-architecture"
 version = "0.1.0"
-description = "Framework-agnostic multi-layer agent hierarchy for orchestrating AI agents"
+description = "Framework-agnostic hierarchical agent management system"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
 authors = [
-    {name = "GieshBuilds"},
+    {name = "Hierarchical Architecture Team"},
 ]
 keywords = ["agents", "hierarchy", "orchestration"]
 classifiers = [
@@ -26,7 +26,6 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0"]
-ui = ["flask>=3.0", "websockets>=12.0"]
 
 [tool.setuptools.packages.find]
 include = ["core*", "integrations*"]

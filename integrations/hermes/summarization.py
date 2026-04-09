@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+PROJECT_ROOT = Path.home() / "hermes_work" / "projects" / "hierarchical-architecture"
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from core.registry.profile_registry import ProfileRegistry

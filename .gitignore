@@ -8,8 +8,6 @@ build/
 .pytest_cache/
 *.db
 
-# IDE / editor
-.vscode/
-.idea/
-*.swp
-*.swo
+# mdbook build output
+book/book/
+.firecrawl/

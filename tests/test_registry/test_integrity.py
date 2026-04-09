@@ -15,10 +15,11 @@ from core.registry.integrity import (
     RULE_ARCHIVED_WITH_ACTIVE_DEPS,
     RULE_CIRCULAR_REFERENCE,
     RULE_CONFIG_PATH_MISSING,
+    RULE_DEPT_HEAD_PARENT_CEO,
     RULE_EXACTLY_ONE_CEO,
     RULE_INVALID_PROFILE_NAME,
-    RULE_NON_CEO_HAS_PARENT,
     RULE_ORPHANED_PROFILE,
+    RULE_PM_PARENT_DEPT_HEAD,
     IntegrityIssue,
     Severity,
     scan_integrity,
@@ -163,39 +164,64 @@ class TestExactlyOneCEO:
 # ---------------------------------------------------------------------------
 
 
-class TestNonCEOHasParent:
-    """Rule: all non-archived, non-CEO profiles must have a parent."""
+class TestDeptHeadParentCEO:
+    """Rule: all non-archived department heads must report to the CEO."""
+
+    def test_dept_head_parenting_to_pm(self, sample_org: ProfileRegistry) -> None:
+        """A dept head whose parent is a PM should trigger an error."""
+        _raw_update(sample_org, "cto", parent_profile="pm-alpha")
+        issues = scan_integrity(sample_org)
+        dh_issues = _issues_by_rule(issues, RULE_DEPT_HEAD_PARENT_CEO)
+        assert len(dh_issues) >= 1
+        names = [i.profile_name for i in dh_issues]
+        assert "cto" in names
 
     def test_dept_head_no_parent(self, sample_org: ProfileRegistry) -> None:
         """A dept head with no parent should trigger an error."""
         _raw_update(sample_org, "cto", parent_profile=None)
         issues = scan_integrity(sample_org)
-        parent_issues = _issues_by_rule(issues, RULE_NON_CEO_HAS_PARENT)
-        assert any(i.profile_name == "cto" for i in parent_issues)
+        dh_issues = _issues_by_rule(issues, RULE_DEPT_HEAD_PARENT_CEO)
+        assert any(i.profile_name == "cto" for i in dh_issues)
+
+    def test_archived_dept_head_ignored(self, sample_org: ProfileRegistry) -> None:
+        """Archived dept heads are not checked for parent rules."""
+        sample_org.delete_profile("pm-alpha")
+        sample_org.delete_profile("pm-beta")
+        sample_org.delete_profile("cto")
+        # The archived CTO has no issue (it's archived)
+        issues = scan_integrity(sample_org)
+        dh_issues = _issues_by_rule(issues, RULE_DEPT_HEAD_PARENT_CEO)
+        assert not any(i.profile_name == "cto" for i in dh_issues)
+
+
+# ---------------------------------------------------------------------------
+# Tests — PMs must parent to dept head
+# ---------------------------------------------------------------------------
+
+
+class TestPMParentDeptHead:
+    """Rule: all non-archived PMs must report to the CEO or a department head."""
+
+    def test_pm_parenting_to_ceo(self, sample_org: ProfileRegistry) -> None:
+        """A PM whose parent is the CEO is valid — no error expected."""
+        _raw_update(sample_org, "pm-alpha", parent_profile="hermes")
+        issues = scan_integrity(sample_org)
+        pm_issues = _issues_by_rule(issues, RULE_PM_PARENT_DEPT_HEAD)
+        assert not any(i.profile_name == "pm-alpha" for i in pm_issues)
+
+    def test_pm_parenting_to_pm(self, sample_org: ProfileRegistry) -> None:
+        """A PM whose parent is another PM should trigger an error."""
+        _raw_update(sample_org, "pm-alpha", parent_profile="pm-beta")
+        issues = scan_integrity(sample_org)
+        pm_issues = _issues_by_rule(issues, RULE_PM_PARENT_DEPT_HEAD)
+        assert any(i.profile_name == "pm-alpha" for i in pm_issues)
 
     def test_pm_no_parent(self, sample_org: ProfileRegistry) -> None:
         """A PM with no parent should trigger an error."""
         _raw_update(sample_org, "pm-alpha", parent_profile=None)
         issues = scan_integrity(sample_org)
-        parent_issues = _issues_by_rule(issues, RULE_NON_CEO_HAS_PARENT)
-        assert any(i.profile_name == "pm-alpha" for i in parent_issues)
-
-    def test_archived_profile_ignored(self, sample_org: ProfileRegistry) -> None:
-        """Archived profiles are not checked."""
-        sample_org.delete_profile("pm-alpha")
-        sample_org.delete_profile("pm-beta")
-        sample_org.delete_profile("cto")
-        issues = scan_integrity(sample_org)
-        parent_issues = _issues_by_rule(issues, RULE_NON_CEO_HAS_PARENT)
-        assert not any(i.profile_name == "cto" for i in parent_issues)
-
-    def test_flexible_parenting_allowed(self, sample_org: ProfileRegistry) -> None:
-        """Any role can parent to any other role (except CEO needing no parent)."""
-        # PM reporting to CEO — valid
-        _raw_update(sample_org, "pm-alpha", parent_profile="hermes")
-        issues = scan_integrity(sample_org)
-        parent_issues = _issues_by_rule(issues, RULE_NON_CEO_HAS_PARENT)
-        assert not any(i.profile_name == "pm-alpha" for i in parent_issues)
+        pm_issues = _issues_by_rule(issues, RULE_PM_PARENT_DEPT_HEAD)
+        assert any(i.profile_name == "pm-alpha" for i in pm_issues)
 
 
 # ---------------------------------------------------------------------------
@@ -429,13 +455,20 @@ class TestMultipleIssues:
         """A badly corrupted DB should produce multiple issues."""
         # Insert profiles with various problems
         _raw_insert(registry, "BAD-HEAD", Role.DEPARTMENT_HEAD.value, "ghost")
+        # Insert a real dept head so "bad-pm" can have it as parent-of-parent,
+        # then insert bad-pm with another PM as parent (invalid — PMs can only
+        # report to CEO or dept head).
+        _raw_insert(registry, "good-head", Role.DEPARTMENT_HEAD.value, "hermes")
+        _raw_insert(registry, "anchor-pm", Role.PROJECT_MANAGER.value, "good-head")
         _raw_insert(
-            registry, "stale-pm", Role.PROJECT_MANAGER.value, "hermes",
+            registry, "stale-pm", Role.PROJECT_MANAGER.value, "anchor-pm",
             config_path="/does/not/exist",
         )
         issues = scan_integrity(registry)
-        # Should have at least: invalid name, orphaned profile, config path missing
+        # Should have at least: invalid name, orphaned profile, PM wrong parent,
+        # config path missing
         rules_found = {i.rule_violated for i in issues}
         assert RULE_INVALID_PROFILE_NAME in rules_found
         assert RULE_ORPHANED_PROFILE in rules_found
+        assert RULE_PM_PARENT_DEPT_HEAD in rules_found
         assert RULE_CONFIG_PATH_MISSING in rules_found

@@ -9,10 +9,9 @@ import os
 import tempfile
 import time
 import threading
-from pathlib import Path
 
 # Add project root to path
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, '/home/michael/hermes_work/projects/hierarchical-architecture')
 
 from core.ipc.message_bus import MessageBus
 from core.ipc.models import MessageType, MessagePriority

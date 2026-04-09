@@ -58,6 +58,19 @@ class TestCreateProfile:
         assert profile.role == Role.PROJECT_MANAGER.value
         assert profile.parent_profile == "cto"
 
+    def test_create_project_manager_under_ceo(self, registry: ProfileRegistry) -> None:
+        """Creating a project_manager directly under the CEO should succeed."""
+        profile = registry.create_profile(
+            name="pm-direct",
+            role="project_manager",
+            parent="hermes",
+            department="engineering",
+            description="Direct PM",
+        )
+        assert profile.profile_name == "pm-direct"
+        assert profile.role == Role.PROJECT_MANAGER.value
+        assert profile.parent_profile == "hermes"
+
     def test_create_profile_returns_profile_dataclass(self, registry: ProfileRegistry) -> None:
         """create_profile should return a Profile instance."""
         profile = registry.create_profile(
