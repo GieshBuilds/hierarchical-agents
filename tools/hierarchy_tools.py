@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 _HIERARCHY_PROJECT_ROOT = os.environ.get(
     "HIERARCHY_PROJECT_ROOT",
-    str(Path.home() / "hermes_work" / "projects" / "hierarchical-architecture"),
+    str(Path.home() / "hermes_work" / "projects" / "hierarchical-agents"),
 )
 
 if _HIERARCHY_PROJECT_ROOT not in sys.path:
