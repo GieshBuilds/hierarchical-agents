@@ -1016,8 +1016,6 @@ class GatewayHook:
         # Use the original sender, not the forwarding hop — user shouldn't
         # see CTO as the sender when PM did the work.
         origin = from_profile
-        if len(display) > 3000:
-            display = display[:3000] + "\n... (truncated)"
         owner_message = f"[{origin}]\n\n{display}"
 
         hook = self._delivery_hook
