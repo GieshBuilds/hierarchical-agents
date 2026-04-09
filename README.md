@@ -1,6 +1,6 @@
 # hierarchical-agents
 
-**Turn isolated [Hermes](https://github.com/GieshBuilds) agent profiles into a coordinated organization with hierarchy, messaging, delegation, and shared memory.**
+**Turn isolated Hermes agent profiles into a coordinated organization with hierarchy, messaging, delegation, and shared memory.**
 
 Hermes gives each agent its own profile — an isolated session with its own identity, tools, and state. But profiles can't talk to each other. This project adds the coordination layer: an org chart, an IPC message bus, delegation chains, scoped memory, and worker lifecycle management. Profiles stop being silos and start working as a team.
 
@@ -63,12 +63,12 @@ Existing Hermes profiles are synced into a hierarchy via `ProfileBridge`. Each p
        +------+------+
        |             |
   +----+----+   +----+----+
-  |   CTO   |   |   CMO   |  Dept Heads
+  | eng-lead|   |biz-lead |  Dept Heads
   +----+----+   +----+----+
        |             |
   +----+----+   +----+----+
-  |backend-pm|  | mktg-pm |  PMs
-  +----+-----+  +---------+
+  |platform-pm| |growth-pm|  PMs
+  +----+------+  +--------+
        |
   +----+----+
   |  dev-*  |  Specialists
@@ -147,7 +147,7 @@ Every profile in the hierarchy gets these tools:
 
 ### Prerequisites
 
-- **[Hermes](https://github.com/GieshBuilds)** installed with at least one profile in `~/.hermes/profiles/`
+- **Hermes** installed with at least one profile in `~/.hermes/profiles/`
 - Python 3.10+
 
 ### Installation
@@ -178,8 +178,8 @@ from core.integration import ChainOrchestrator
 registry = ProfileRegistry(":memory:")
 
 # Add agents to the org chart
-registry.create_profile(name="cto", role="department_head", parent="hermes")
-registry.create_profile(name="backend-pm", role="project_manager", parent="cto")
+registry.create_profile(name="eng-lead", role="department_head", parent="hermes")
+registry.create_profile(name="platform-pm", role="project_manager", parent="eng-lead")
 
 # Set up messaging and orchestration
 bus = MessageBus(":memory:")
@@ -196,15 +196,15 @@ orchestrator = ChainOrchestrator(
 # Create a delegation chain
 chain = orchestrator.create_chain("Build the API", originator="hermes")
 
-# Route it down: CEO -> CTO -> PM
-orchestrator.delegate(chain, "hermes", "cto")
-orchestrator.delegate(chain, "cto", "backend-pm")
+# Route it down: CEO -> Eng Lead -> PM
+orchestrator.delegate(chain, "hermes", "eng-lead")
+orchestrator.delegate(chain, "eng-lead", "platform-pm")
 
 # PM spawns a worker to do the actual work
-worker_id = orchestrator.spawn_worker(chain, "backend-pm", "Implement /users endpoint")
+worker_id = orchestrator.spawn_worker(chain, "platform-pm", "Implement /users endpoint")
 
 # Worker completes — result auto-propagates back up to hermes
-orchestrator.complete_worker(chain, "backend-pm", worker_id, "Endpoint implemented")
+orchestrator.complete_worker(chain, "platform-pm", worker_id, "Endpoint implemented")
 ```
 
 ### Send Messages Directly
@@ -217,18 +217,18 @@ protocol = MessageProtocol(bus)
 # Request/response pattern
 msg_id, corr_id = protocol.send_request(
     from_profile="hermes",
-    to_profile="cto",
+    to_profile="eng-lead",
     payload={"task": "Review backend architecture"},
     priority=MessagePriority.URGENT,
 )
 
 # Recipient polls their inbox
-messages = bus.poll("cto")
+messages = bus.poll("eng-lead")
 
 # Respond
 protocol.send_response(
     correlation_id=corr_id,
-    from_profile="cto",
+    from_profile="eng-lead",
     to_profile="hermes",
     payload={"result": "Architecture approved"},
 )
@@ -238,15 +238,15 @@ protocol.send_response(
 
 ```bash
 # Profile management
-python -m core create-profile --name cto --display-name CTO \
+python -m core create-profile --name eng-lead --display-name "Eng Lead" \
     --role department_head --parent hermes
 python -m core list-profiles --json
 python -m core show-org-chart
 
 # Messaging
-python -m core send-message --from hermes --to cto --type task_request \
+python -m core send-message --from hermes --to eng-lead --type task_request \
     --payload '{"task": "review architecture"}' --priority urgent
-python -m core poll-messages --profile cto
+python -m core poll-messages --profile eng-lead
 
 # Memory
 python -m core inspect-memory hermes --memory-db ./memory.db --scope strategic

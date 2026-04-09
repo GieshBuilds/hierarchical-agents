@@ -496,9 +496,9 @@ Task: "Implement user authentication"
 
 ```
 Chain: chain-a1b2c3d4
-  Hop 0: hermes → cto          [COMPLETED]  msg-xxx
-  Hop 1: cto → pm-backend      [COMPLETED]  msg-yyy
-  Worker: sa-zzz (pm-backend)   [COMPLETED]  "Login endpoint implemented"
+  Hop 0: hermes → eng-lead      [COMPLETED]  msg-xxx
+  Hop 1: eng-lead → platform-pm [COMPLETED]  msg-yyy
+  Worker: sa-zzz (platform-pm)  [COMPLETED]  "Login endpoint implemented"
 ```
 
 ### Flow
@@ -710,12 +710,12 @@ Templates use `{{variable}}` placeholders that are filled in during generation:
 
 ```python
 variables = build_variables(
-    profile_name="pm-backend",
-    display_name="Backend PM",
+    profile_name="platform-pm",
+    display_name="Platform PM",
     role="project_manager",
-    parent_profile="cto",
+    parent_profile="eng-lead",
     department="engineering",
-    description="Manages backend API development",
+    description="Manages platform API development",
 )
 generate_profile_docs(profile_dir, "project_manager", variables)
 ```

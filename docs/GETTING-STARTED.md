@@ -4,7 +4,7 @@ This guide walks you through setting up a hierarchical agent organization from s
 
 ## Prerequisites
 
-- **[Hermes](https://github.com/GieshBuilds)** installed and working
+- **Hermes** installed and working
 - Python 3.10 or later
 - No external dependencies required for core (stdlib only)
 
@@ -58,31 +58,31 @@ registry = ProfileRegistry("./registry.db")
 
 # PMs can report directly to the CEO
 registry.create_profile(
-    name="pm-backend",
-    display_name="Backend PM",
+    name="platform-pm",
+    display_name="Platform PM",
     role="project_manager",
     parent="hermes",
 )
 
 registry.create_profile(
-    name="pm-frontend",
-    display_name="Frontend PM",
+    name="web-pm",
+    display_name="Web PM",
     role="project_manager",
     parent="hermes",
 )
 
 # Add a specialist under a PM
 registry.create_profile(
-    name="dev-backend",
-    display_name="Backend Developer",
+    name="api-dev",
+    display_name="API Developer",
     role="specialist",
-    parent="pm-backend",
+    parent="platform-pm",
 )
 
 # Or add a department head layer if you want it
 registry.create_profile(
-    name="cto",
-    display_name="CTO",
+    name="eng-lead",
+    display_name="Eng Lead",
     role="department_head",
     parent="hermes",
     department="engineering",
@@ -104,10 +104,10 @@ New profiles start in **onboarding** status. To activate a profile, submit an on
 
 ```python
 registry.submit_onboarding_brief(
-    profile_name="pm-backend",
-    parent_pm="cto",
-    role_definition="Manages backend API development",
-    scope="Backend services and APIs. Not frontend.",
+    profile_name="platform-pm",
+    parent_pm="eng-lead",
+    role_definition="Manages platform API development",
+    scope="Platform services and APIs. Not frontend.",
     success_criteria="All endpoints tested and deployed",
     handoff_protocol="Return results via TASK_RESPONSE",
 )
@@ -117,7 +117,7 @@ registry.submit_onboarding_brief(
 Or use the CLI:
 
 ```bash
-python -m core create-profile --name cto --display-name CTO \
+python -m core create-profile --name eng-lead --display-name "Eng Lead" \
     --role department_head --parent hermes --department engineering
 
 python -m core show-org-chart
@@ -138,20 +138,20 @@ protocol = MessageProtocol(bus)
 # Send a task request
 message_id, correlation_id = protocol.send_request(
     from_profile="hermes",
-    to_profile="cto",
-    payload={"task": "Review backend architecture"},
+    to_profile="eng-lead",
+    payload={"task": "Review platform architecture"},
     priority=MessagePriority.NORMAL,
 )
 
 # Recipient polls their inbox
-messages = bus.poll("cto")
+messages = bus.poll("eng-lead")
 for msg in messages:
     print(f"[{msg.priority.name}] {msg.payload}")
 
 # Recipient responds
 protocol.send_response(
     correlation_id=correlation_id,
-    from_profile="cto",
+    from_profile="eng-lead",
     to_profile="hermes",
     payload={"result": "Architecture looks good, proceeding"},
 )
@@ -159,7 +159,7 @@ protocol.send_response(
 # Sender can wait for the response
 response = protocol.wait_for_response(
     correlation_id=correlation_id,
-    responding_profile="cto",
+    responding_profile="eng-lead",
     timeout=30.0,
 )
 ```
@@ -215,20 +215,20 @@ chain = orchestrator.create_chain(
     originator="hermes",
 )
 
-# Delegate down: CEO -> CTO -> PM (auto-routes through hierarchy)
-hops = orchestrator.delegate_down_chain(chain, "pm-backend")
+# Delegate down: CEO -> Eng Lead -> PM (auto-routes through hierarchy)
+hops = orchestrator.delegate_down_chain(chain, "platform-pm")
 
 # PM spawns a worker to execute
 worker_id = orchestrator.spawn_worker(
     chain=chain,
-    pm_profile="pm-backend",
+    pm_profile="platform-pm",
     task="Build login endpoint with JWT",
 )
 
 # Worker completes — result propagates up automatically
 orchestrator.complete_worker(
     chain=chain,
-    pm_profile="pm-backend",
+    pm_profile="platform-pm",
     subagent_id=worker_id,
     result="Login endpoint implemented with JWT auth",
 )
@@ -334,12 +334,12 @@ profile_dir = Path("./profiles/pm-backend")
 profile_dir.mkdir(parents=True, exist_ok=True)
 
 variables = build_variables(
-    profile_name="pm-backend",
-    display_name="Backend PM",
+    profile_name="platform-pm",
+    display_name="Platform PM",
     role="project_manager",
-    parent_profile="cto",
+    parent_profile="eng-lead",
     department="engineering",
-    description="Manages backend API development",
+    description="Manages platform API development",
 )
 
 written = generate_profile_docs(profile_dir, "project_manager", variables)

@@ -37,17 +37,17 @@ This scans `~/.hermes/profiles/`, reads each profile's `SOUL.md` to guess a role
 **Sample output:**
 
 ```
-Found 4 profile(s): hermes, cto, pm-backend, dev-backend
+Found 4 profile(s): hermes, eng-lead, platform-pm, api-dev
 Syncing...
 
-  Added   (4): hermes, cto, pm-backend, dev-backend
+  Added   (4): hermes, eng-lead, platform-pm, api-dev
 
 Done. All non-CEO profiles default to parent='hermes'.
 
 hermes (ceo) [active]
-├── cto (department_head) [active]
-├── pm-backend (project_manager) [active]
-└── dev-backend (specialist) [active]
+├── eng-lead (department_head) [active]
+├── platform-pm (project_manager) [active]
+└── api-dev (specialist) [active]
 ```
 
 **How roles are guessed:** ProfileBridge scans each `SOUL.md` for keywords like `ceo`, `director`, `project manager`, `pm`, etc. The `hermes` profile is always treated as CEO. Unknown profiles default to `department_head`.
@@ -61,8 +61,8 @@ hermes (ceo) [active]
 After sync, every non-CEO profile defaults to `parent='hermes'`. If you want a layered hierarchy (e.g., PM under CTO instead of directly under CEO), reassign parents:
 
 ```bash
-# PM reports to CTO instead of directly to hermes
-python -m core reassign-parent --name pm-backend --parent cto
+# PM reports to Eng Lead instead of directly to hermes
+python -m core reassign-parent --name platform-pm --parent eng-lead
 
 # View the updated chart
 python -m core show-org-chart
@@ -71,11 +71,11 @@ python -m core show-org-chart
 Or set roles explicitly:
 
 ```bash
-python -m core update-role --name cto --role department_head
-python -m core update-role --name pm-backend --role project_manager
+python -m core update-role --name eng-lead --role department_head
+python -m core update-role --name platform-pm --role project_manager
 ```
 
-The hierarchy is flexible. Any non-CEO profile can report to any other profile. The only hard rules: one CEO (always `hermes`), every other profile needs a parent, no circular refs.
+The hierarchy is flexible. Any non-CEO profile can report to any other profile. The only hard rules: one CEO (auto-created as `hermes`), every other profile needs a parent, no circular refs.
 
 ---
 
@@ -105,8 +105,8 @@ Each active profile needs a gateway running to receive IPC messages. Start them 
 ```bash
 # Start a gateway for each profile (runs in background)
 python ~/.hermes/hierarchy/hierarchy_gateway.py start hermes &
-python ~/.hermes/hierarchy/hierarchy_gateway.py start cto &
-python ~/.hermes/hierarchy/hierarchy_gateway.py start pm-backend &
+python ~/.hermes/hierarchy/hierarchy_gateway.py start eng-lead &
+python ~/.hermes/hierarchy/hierarchy_gateway.py start platform-pm &
 ```
 
 Logs go to `~/.hermes/hierarchy/logs/gateway-<profile>.log`. PID files at `~/.hermes/hierarchy/logs/gateway-<profile>.pid`.
@@ -118,7 +118,7 @@ Gateways start automatically when a profile first receives a message. The `Herme
 ### Stop a gateway
 
 ```bash
-python ~/.hermes/hierarchy/hierarchy_gateway.py stop cto
+python ~/.hermes/hierarchy/hierarchy_gateway.py stop eng-lead
 ```
 
 ### One-shot mode (cron-friendly)
@@ -127,7 +127,7 @@ If you prefer not to run persistent daemons:
 
 ```bash
 # Process whatever is in cto's inbox right now, then exit
-python ~/.hermes/hierarchy/hierarchy_gateway.py process cto
+python ~/.hermes/hierarchy/hierarchy_gateway.py process eng-lead
 ```
 
 ---
@@ -173,15 +173,15 @@ from pathlib import Path
 from templates import generate_profile_docs, build_variables
 
 # Point at the profile's actual Hermes directory
-profile_dir = Path.home() / ".hermes" / "profiles" / "pm-backend"
+profile_dir = Path.home() / ".hermes" / "profiles" / "platform-pm"
 
 variables = build_variables(
-    profile_name="pm-backend",
-    display_name="Backend PM",
+    profile_name="platform-pm",
+    display_name="Platform PM",
     role="project_manager",
-    parent_profile="cto",
+    parent_profile="eng-lead",
     department="engineering",
-    description="Manages backend API development",
+    description="Manages platform API development",
 )
 
 generate_profile_docs(profile_dir, "project_manager", variables)
@@ -217,10 +217,10 @@ from core.memory.memory_store import MemoryStore
 from core.memory.models import MemoryScope
 from integrations.hermes.memory_bridge import sync_memory
 
-store = MemoryStore("~/.hermes/hierarchy/memory/pm-backend.db", "pm-backend", MemoryScope.project)
+store = MemoryStore("~/.hermes/hierarchy/memory/platform-pm.db", "platform-pm", MemoryScope.project)
 
 sync_memory(
-    profile_name="pm-backend",
+    profile_name="platform-pm",
     profiles_dir=Path.home() / ".hermes" / "profiles",
     memory_store=store,
 )
@@ -234,21 +234,21 @@ sync_memory(
 # Check the org chart
 python -m core show-org-chart
 
-# Send a test message from hermes to cto
-python -m core send-message --from hermes --to cto \
+# Send a test message from hermes to eng-lead
+python -m core send-message --from hermes --to eng-lead \
     --type task_request \
     --payload '{"task": "Review the Q2 roadmap"}' \
     --priority normal
 
-# Check cto's inbox
-python -m core poll-messages --profile cto
+# Check eng-lead's inbox
+python -m core poll-messages --profile eng-lead
 
 # Check IPC bus stats
 python -m core ipc-stats
 
 # View memory for a profile
-python -m core inspect-memory pm-backend \
-    --memory-db ~/.hermes/hierarchy/memory/pm-backend.db \
+python -m core inspect-memory platform-pm \
+    --memory-db ~/.hermes/hierarchy/memory/platform-pm.db \
     --scope project
 ```
 
@@ -317,7 +317,7 @@ python -m core update-role --name my-profile --role project_manager
 The gateway must have started at least once for the profile. Check the gateway log:
 
 ```bash
-tail -f ~/.hermes/hierarchy/logs/gateway-pm-backend.log
+tail -f ~/.hermes/hierarchy/logs/gateway-platform-pm.log
 ```
 
 **Messages not being delivered**
@@ -326,6 +326,6 @@ Make sure the gateway is running for the recipient profile. Check:
 
 ```bash
 ls ~/.hermes/hierarchy/logs/*.pid   # Running gateways
-python -m core poll-messages --profile cto  # What's in inbox
+python -m core poll-messages --profile eng-lead  # What's in inbox
 python -m core ipc-stats            # Bus health
 ```
