@@ -5,7 +5,7 @@
 ## Organization Overview
 - **Profile**: {{profile_name}}
 - **Role**: CEO — top of the agent hierarchy
-- **Reports to**: Owner
+- **Reports to**: Owner (Michael)
 - **Direct reports**: Department heads
 
 ## Key Decisions

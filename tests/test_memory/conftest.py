@@ -56,7 +56,7 @@ def sample_memory_entry() -> MemoryEntry:
         scope=MemoryScope.strategic,
         tier=MemoryTier.hot,
         entry_type=MemoryEntryType.decision,
-        content="Decided to prioritize Project Alpha launch",
+        content="Decided to prioritize Counter-Liquid launch",
     )
 
 
