@@ -184,6 +184,228 @@ Common causes of failure:
 - PYTHONPATH not set correctly (ImportError in the log)
 - The profile name is misspelled or does not exist in the registry
 
+## Step 8b — Patch the Hermes gateway for chat integration
+
+The hierarchy system works standalone, but to send messages to profiles from Telegram or Discord (via `/talk`, `/send`, and voice messages), three patches must be applied to the Hermes gateway. Apply them now.
+
+**Find the gateway file:**
+
+   python3 -c "import gateway.run as m; import inspect; print(inspect.getfile(m))"
+
+Store this path as GATEWAY_RUN. If that fails, try:
+   find ~/.hermes -name "run.py" -path "*/gateway/*" | head -1
+
+**Check what is already present:**
+
+   grep -n "canonical == .talk.\|canonical == .send.\|_route_to_focused_profile\|_handle_send_command" "$GATEWAY_RUN"
+
+For each item NOT found, apply the corresponding patch below. If all are present, skip to Step 9.
+
+---
+
+### Patch 1 — `/talk` and `/exit` commands (apply if `canonical == "talk"` is missing)
+
+Find the command dispatch block in GATEWAY_RUN (search for `if canonical == "voice":`) and add these two lines immediately after the voice block:
+
+```python
+        if canonical == "talk":
+            return await self._handle_talk_command(event)
+
+        if canonical == "send":
+            return await self._handle_send_command(event)
+```
+
+Then find the class that contains `_handle_voice_command` and add these methods to it. Add them as new methods in the class (before any existing `_route_to_focused_profile` if present, or before `_handle_rollback_command` or any similarly-named late method):
+
+```python
+    async def _handle_talk_command(self, event) -> str:
+        """Handle /talk <profile> — focus this session on a hierarchy profile."""
+        import sys as _sys, logging as _logging
+        _logger = _logging.getLogger(__name__)
+        source = event.source
+        session_key = self._session_key_for_source(source)
+        if not hasattr(self, '_focus_targets'):
+            self._focus_targets = {}
+        args = event.get_command_args().strip()
+        if not args:
+            current = self._focus_targets.get(session_key)
+            if current:
+                return f"Currently talking to: {current}\nUse /exit to return to CEO."
+            return "Usage: /talk <profile-name>\nExample: /talk pm-discord-poker\nUse /exit to return to CEO."
+        profile_name = args.split()[0].lower()
+        try:
+            _project_root = str(__import__("pathlib").Path.home() / "hermes_work" / "projects" / "hierarchical-agents")
+            if _project_root not in _sys.path:
+                _sys.path.insert(0, _project_root)
+            from hierarchy.core.registry.profile_registry import ProfileRegistry
+            _reg_path = str(__import__("pathlib").Path.home() / ".hermes" / "hierarchy" / "registry.db")
+            reg = ProfileRegistry(_reg_path)
+            try:
+                profile = reg.get_profile(profile_name)
+                if profile is None:
+                    profiles = [p.profile_name for p in reg.list_profiles()]
+                    return f"Profile '{profile_name}' not found.\nAvailable: {', '.join(profiles)}"
+            finally:
+                reg.close()
+        except Exception as e:
+            _logger.warning("Failed to validate profile '%s': %s", profile_name, e)
+        self._focus_targets[session_key] = profile_name
+        return f"Now talking directly to: {profile_name}\nYour messages will be routed to this profile.\nUse /exit to return to CEO."
+
+    async def _handle_exit_command(self, event) -> str:
+        """Handle /exit — return to CEO from a /talk session."""
+        source = event.source
+        session_key = self._session_key_for_source(source)
+        if not hasattr(self, '_focus_targets'):
+            self._focus_targets = {}
+        previous = self._focus_targets.pop(session_key, None)
+        if previous:
+            return f"Left conversation with {previous}. Back to CEO."
+        return "Not in a /talk session. Already talking to CEO."
+
+    async def _handle_send_command(self, event) -> str:
+        """Handle /send <profile> <message> — fire-and-forget to any hierarchy profile."""
+        import sys as _sys, logging as _logging
+        _logger = _logging.getLogger(__name__)
+        args = event.get_command_args().strip()
+        if not args or " " not in args:
+            return "Usage: /send <profile> <message>\nExample: /send pm-bookmark-analysis look into UI/UX examples"
+        profile_name, _, message_text = args.partition(" ")
+        profile_name = profile_name.lower().strip()
+        message_text = message_text.strip()
+        if not message_text:
+            return "Usage: /send <profile> <message>"
+        source = event.source
+        try:
+            _project_root = str(__import__("pathlib").Path.home() / "hermes_work" / "projects" / "hierarchical-agents")
+            if _project_root not in _sys.path:
+                _sys.path.insert(0, _project_root)
+            from hierarchy.core.ipc.message_bus import MessageBus
+            from hierarchy.core.ipc.models import MessageType
+            from hierarchy.core.registry.profile_registry import ProfileRegistry
+            from pathlib import Path as _Path
+            _hier_dir = _Path.home() / ".hermes" / "hierarchy"
+            reg = ProfileRegistry(str(_hier_dir / "registry.db"))
+            try:
+                profile = reg.get_profile(profile_name)
+                if profile is None:
+                    profiles = [p.profile_name for p in reg.list_profiles()]
+                    return f"Profile '{profile_name}' not found.\nAvailable: {', '.join(profiles)}"
+            finally:
+                reg.close()
+            bus = MessageBus(str(_hier_dir / "ipc.db"))
+            bus.send(
+                from_profile="hermes",
+                to_profile=profile_name,
+                message_type=MessageType.TASK_REQUEST,
+                payload={
+                    "task": message_text,
+                    "user_talk": True,
+                    "deliver_to": "origin",
+                    "origin_platform": source.platform.value if source.platform else "",
+                    "origin_chat_id": source.chat_id,
+                },
+            )
+            bus.close()
+            _logger.info("Sent direct message to '%s': %.100s", profile_name, message_text)
+            return f"Sent to {profile_name}. Response will be delivered here when ready."
+        except Exception as e:
+            _logger.error("Failed to send to '%s': %s", profile_name, e)
+            return f"Failed to send to {profile_name}: {e}"
+
+    async def _route_to_focused_profile(self, event, session_key: str):
+        """Route a message to the focused profile and deliver the response."""
+        import sys as _sys, logging as _logging
+        _logger = _logging.getLogger(__name__)
+        if not hasattr(self, '_focus_targets'):
+            self._focus_targets = {}
+        target = self._focus_targets.get(session_key)
+        if not target:
+            return None
+        source = event.source
+        message_text = getattr(event, 'text', '') or ""
+        # Transcribe voice/audio before routing so voice works in /talk sessions
+        if not message_text.strip() and getattr(event, 'media_urls', None):
+            try:
+                audio_paths = []
+                for i, path in enumerate(event.media_urls):
+                    mtype = event.media_types[i] if i < len(event.media_types) else ""
+                    if mtype.startswith("audio/") or getattr(event, 'message_type', None) in ('voice', 'audio'):
+                        audio_paths.append(path)
+                if audio_paths:
+                    message_text = await self._enrich_message_with_transcription("", audio_paths)
+            except Exception:
+                pass
+        if not message_text.strip():
+            return None
+        try:
+            _project_root = str(__import__("pathlib").Path.home() / "hermes_work" / "projects" / "hierarchical-agents")
+            if _project_root not in _sys.path:
+                _sys.path.insert(0, _project_root)
+            from hierarchy.core.ipc.message_bus import MessageBus
+            from hierarchy.core.ipc.models import MessageType
+            from pathlib import Path as _Path
+            _hier_dir = _Path.home() / ".hermes" / "hierarchy"
+            bus = MessageBus(str(_hier_dir / "ipc.db"))
+            bus.send(
+                from_profile="hermes",
+                to_profile=target,
+                message_type=MessageType.TASK_REQUEST,
+                payload={
+                    "task": message_text,
+                    "user_talk": True,
+                    "deliver_to": "origin",
+                    "origin_platform": source.platform.value if source.platform else "",
+                    "origin_chat_id": source.chat_id,
+                },
+            )
+            bus.close()
+            _logger.info("Routed /talk message to '%s': %.100s", target, message_text)
+            return f"Message sent to {target}. Response will be delivered here when ready."
+        except Exception as e:
+            _logger.error("Failed to route to '%s': %s", target, e)
+            return f"Failed to send to {target}: {e}"
+```
+
+---
+
+### Patch 2 — Route `/talk` messages during active session (apply if the main message handler doesn't check `_focus_targets`)
+
+In the main `handle_message` method (or equivalent), find the section that checks for commands. Add this block BEFORE the session claims the agent (look for a comment like "Claim this session" or the `_running_agents` sentinel):
+
+```python
+        # Route to focused profile if /talk is active
+        if not command and hasattr(self, '_focus_targets'):
+            _session_key = self._session_key_for_source(event.source)
+            if _session_key in self._focus_targets:
+                return await self._route_to_focused_profile(event, _session_key)
+```
+
+---
+
+### Patch 3 — Remove response truncation (apply always)
+
+Search GATEWAY_RUN for this pattern:
+```python
+if len(display) > 3000:
+    display = display[:3000] + "\n... (truncated)"
+```
+
+If found, delete those two lines. The Telegram delivery hook handles chunking natively — this truncation silently cuts off long PM responses.
+
+---
+
+After applying all patches, restart the Hermes gateway:
+
+   systemctl --user restart hermes-gateway.service
+
+Verify it restarted cleanly:
+   systemctl --user is-active hermes-gateway.service
+
+Expected: `active`
+
+---
+
 ## Step 9 — Configure hierarchy tools for each profile
 
 Each Hermes profile needs access to the 12 hierarchy tools. The tools are in:
