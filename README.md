@@ -1,6 +1,6 @@
 # hierarchical-agents
 
-**Turn isolated [Hermes](https://github.com/GieshBuilds) agent profiles into a coordinated organization with hierarchy, messaging, delegation, and shared memory.**
+**Turn isolated Hermes agent profiles into a coordinated organization with hierarchy, messaging, delegation, and shared memory.**
 
 Hermes gives each agent its own profile — an isolated session with its own identity, tools, and state. But profiles can't talk to each other. This project adds the coordination layer: an org chart, an IPC message bus, delegation chains, scoped memory, and worker lifecycle management. Profiles stop being silos and start working as a team.
 
@@ -147,7 +147,7 @@ Every profile in the hierarchy gets these tools:
 
 ### Prerequisites
 
-- **[Hermes](https://github.com/GieshBuilds)** installed with at least one profile in `~/.hermes/profiles/`
+- **Hermes** installed with at least one profile in `~/.hermes/profiles/`
 - Python 3.10+
 
 ### Installation
