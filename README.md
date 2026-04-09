@@ -2,9 +2,29 @@
 
 **Turn isolated Hermes agent profiles into a coordinated organization with hierarchy, messaging, delegation, and shared memory.**
 
+> **Requires Hermes.** This project is a coordination layer that runs on top of [Hermes](https://github.com/GieshBuilds) — it does not replace it. You need a working Hermes installation with at least one profile before setting this up.
+
 Hermes gives each agent its own profile — an isolated session with its own identity, tools, and state. But profiles can't talk to each other. This project adds the coordination layer: an org chart, an IPC message bus, delegation chains, scoped memory, and worker lifecycle management. Profiles stop being silos and start working as a team.
 
 Pure Python 3.10+ stdlib. Zero external dependencies in core. All persistence via SQLite.
+
+---
+
+## Quick Start
+
+If you have Hermes installed and want to add the hierarchy layer now:
+
+```bash
+git clone https://github.com/GieshBuilds/hierarchical-agents.git
+cd hierarchical-agents
+pip install -e .
+python scripts/sync_hermes_profiles.py --show-chart   # import your profiles
+python -m core show-org-chart                          # verify the result
+```
+
+For the complete setup — environment variables, gateway daemons, systemd services, and tool configuration — see **[docs/SETUP.md](docs/SETUP.md)**.
+
+Want your AI agent to do the integration automatically? Paste the prompt in **[docs/AGENT-INTEGRATION-PROMPT.md](docs/AGENT-INTEGRATION-PROMPT.md)** to Claude Code or any capable assistant.
 
 ---
 
@@ -350,7 +370,9 @@ Real-time mode polls the SQLite databases for changes and pushes updates to conn
 
 ## Documentation
 
-- **[Hermes Integration](docs/HERMES-INTEGRATION.md)** — Full walkthrough: sync profiles, install the gateway, configure tools, set up memory bridge
+- **[Setup Guide](docs/SETUP.md)** — Step-by-step: install, sync profiles, configure environment variables, start gateways, set up systemd services, verify everything works
+- **[Agent Integration Prompt](docs/AGENT-INTEGRATION-PROMPT.md)** — Paste this to Claude Code (or any AI assistant) to have it run the full integration automatically
+- **[Hermes Integration](docs/HERMES-INTEGRATION.md)** — Detailed walkthrough: sync profiles, install the gateway, configure tools, set up memory bridge
 - **[Getting Started](docs/GETTING-STARTED.md)** — API reference: hierarchy creation, messaging, delegation, memory, and the dashboard
 - **[Architecture](docs/ARCHITECTURE.md)** — Deep dive: how every module works, data models, schemas, state machines, integration layer, and design patterns
 
